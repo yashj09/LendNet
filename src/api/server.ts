@@ -1,0 +1,150 @@
+import express from "express";
+import cors from "cors";
+import { CONFIG } from "../config/index.js";
+import { AgentManager } from "../agents/AgentManager.js";
+import { LoanManager } from "../loans/LoanManager.js";
+import type { LendNetEvent } from "../config/types.js";
+
+export function createServer(
+  agentManager: AgentManager,
+  loanManager: LoanManager,
+) {
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
+
+  // SSE for real-time events
+  const sseClients: express.Response[] = [];
+
+  app.get("/api/events", (req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+    sseClients.push(res);
+    req.on("close", () => {
+      const idx = sseClients.indexOf(res);
+      if (idx !== -1) sseClients.splice(idx, 1);
+    });
+  });
+
+  function broadcastEvent(event: LendNetEvent) {
+    const data = JSON.stringify(event);
+    for (const client of sseClients) {
+      client.write(`data: ${data}\n\n`);
+    }
+  }
+
+  // Wire up events
+  agentManager.onEvent(broadcastEvent);
+  loanManager.onEvent(broadcastEvent);
+
+  // ─── Agent Routes ──────────────────────────────────────
+  app.get("/api/agents", async (_req, res) => {
+    try {
+      const agents = agentManager.getAllAgents();
+      const statuses = await Promise.all(
+        agents.map((a) => agentManager.getAgentStatus(a.id)),
+      );
+      res.json(statuses);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id", async (req, res) => {
+    try {
+      const status = await agentManager.getAgentStatus(req.params.id);
+      res.json(status);
+    } catch (err: any) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agents", async (req, res) => {
+    try {
+      const { name, role, seed } = req.body;
+      const agent = await agentManager.createAgent(name, role, seed);
+      res.json(agent);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/agents/:id/credit", async (req, res) => {
+    try {
+      const report = await agentManager.getCreditReport(req.params.id);
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Loan Routes ───────────────────────────────────────
+  app.get("/api/loans", (_req, res) => {
+    res.json(loanManager.getAllLoans());
+  });
+
+  app.get("/api/loans/stats", (_req, res) => {
+    res.json(loanManager.getStats());
+  });
+
+  app.get("/api/loans/:id", (req, res) => {
+    try {
+      res.json(loanManager.getLoan(req.params.id));
+    } catch (err: any) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/loans/request", async (req, res) => {
+    try {
+      const { borrowerId, amount, purpose, offeredRate, offeredCollateral } =
+        req.body;
+      const result = await agentManager.requestLoan({
+        borrowerId,
+        amount,
+        purpose,
+        offeredRate: offeredRate || 10,
+        offeredCollateral: offeredCollateral || 50,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/loans/:id/repay", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      const result = await agentManager.repayLoan(req.params.id, amount);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Health check
+  app.get("/", (_req, res) => {
+    res.json({
+      status: "ok",
+      service: "LendNet API",
+      dashboard: "http://localhost:3001",
+    });
+  });
+
+  return app;
+}
+
+export function startServer(
+  agentManager: AgentManager,
+  loanManager: LoanManager,
+) {
+  const app = createServer(agentManager, loanManager);
+  app.listen(CONFIG.port, () => {
+    console.log(
+      `\n[Server] LendNet dashboard: http://localhost:${CONFIG.port}`,
+    );
+  });
+  return app;
+}
