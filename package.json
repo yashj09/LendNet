@@ -1,0 +1,35 @@
+{
+  "name": "lendnet",
+  "version": "1.0.0",
+  "description": "Autonomous P2P Agent Lending Network - AI agents that negotiate and settle USDT loans using Tether WDK",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc && cd dashboard && npm run build",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "demo": "tsx src/demo.ts",
+    "mcp": "tsx mcp-server/index.ts",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.26.4",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@tetherto/wdk": "^1.0.0-beta.6",
+    "@tetherto/wdk-wallet-evm": "^1.0.0-beta.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.14.3",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
