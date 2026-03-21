@@ -38,6 +38,7 @@ export function createServer(
   // Wire up events
   agentManager.onEvent(broadcastEvent);
   loanManager.onEvent(broadcastEvent);
+  agentManager.getConsensusEngine().onEvent(broadcastEvent);
 
   // ─── Agent Routes ──────────────────────────────────────
   app.get("/api/agents", async (_req, res) => {
@@ -124,6 +125,39 @@ export function createServer(
     }
   });
 
+  // ─── Governance Routes ────────────────────────────────
+  app.get("/api/governance/policy", (_req, res) => {
+    res.json(agentManager.getNetworkPolicy());
+  });
+
+  app.get("/api/governance/sessions", (_req, res) => {
+    res.json(agentManager.getConsensusEngine().getAllSessions());
+  });
+
+  app.get("/api/governance/sessions/:id", (req, res) => {
+    const session = agentManager.getConsensusEngine().getSession(req.params.id);
+    if (!session) return res.status(404).json({ error: "Session not found" });
+    res.json(session);
+  });
+
+  app.post("/api/governance/rate-committee", async (_req, res) => {
+    try {
+      const session = await agentManager.conveneRateCommittee();
+      res.json(session);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/governance/dispute/:loanId", async (req, res) => {
+    try {
+      const session = await agentManager.conveneDisputeResolution(req.params.loanId);
+      res.json(session);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   // Health check
   app.get("/", (_req, res) => {
     res.json({
@@ -131,6 +165,12 @@ export function createServer(
       service: "LendNet API",
       dashboard: "http://localhost:3001",
     });
+  });
+
+  // Global error handler — always return JSON, never plain text
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[API] Unhandled error:', err.message || err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   });
 
   return app;

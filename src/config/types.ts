@@ -106,6 +106,48 @@ export interface WalletMetrics {
   };
 }
 
+// ─── Governance Types ─────────────────────────────────
+export type ConsensusType = 'rate_committee' | 'loan_approval' | 'dispute_resolution';
+
+export type ConsensusVote = 'APPROVE' | 'DENY' | 'ABSTAIN';
+
+export interface NetworkPolicy {
+  baseInterestRate: number;      // network base rate (%)
+  minCollateralPercent: number;  // floor on collateral requirements (%)
+  maxLoanAmount: number;         // global max single loan (USDT)
+  lastUpdated: number;
+  reasoning: string;             // AI consensus explanation
+}
+
+export interface ConsensusMessage {
+  round: number;
+  phase: 'DELIBERATION' | 'DISCUSSION' | 'VOTE';
+  agentId: string;
+  agentName: string;
+  agentRole: 'lender' | 'borrower' | 'both';
+  position: string;              // agent's argument/stance
+  vote?: ConsensusVote;
+  reasoning: string;
+  timestamp: number;
+}
+
+export interface ConsensusSession {
+  id: string;
+  type: ConsensusType;
+  topic: string;                 // human-readable description
+  context: Record<string, unknown>; // metrics, loan data, etc.
+  participants: string[];        // agent IDs
+  messages: ConsensusMessage[];
+  outcome: {
+    decision: string;
+    votes: Record<string, ConsensusVote>;
+    passed: boolean;
+    reasoning: string;
+  } | null;
+  startedAt: number;
+  completedAt?: number;
+}
+
 // ─── Event Types ───────────────────────────────────────
 export type LendNetEvent =
   | { type: 'agent_created'; agent: AgentProfile }
@@ -115,4 +157,7 @@ export type LendNetEvent =
   | { type: 'repayment_made'; loanId: string; amount: number; txHash: string }
   | { type: 'loan_completed'; loanId: string }
   | { type: 'loan_defaulted'; loanId: string }
-  | { type: 'credit_updated'; agentId: string; newScore: number };
+  | { type: 'credit_updated'; agentId: string; newScore: number }
+  | { type: 'governance_started'; session: ConsensusSession }
+  | { type: 'governance_message'; sessionId: string; message: ConsensusMessage }
+  | { type: 'governance_completed'; session: ConsensusSession };
