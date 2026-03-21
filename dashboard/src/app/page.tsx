@@ -1,0 +1,244 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import AgentCard from "@/components/AgentCard";
+import LoanCard from "@/components/LoanCard";
+import NegotiationLog from "@/components/NegotiationLog";
+import EventFeed from "@/components/EventFeed";
+import StatsBar from "@/components/StatsBar";
+import CreateAgentForm from "@/components/CreateAgentForm";
+import RequestLoanForm from "@/components/RequestLoanForm";
+import RepayLoanForm from "@/components/RepayLoanForm";
+import { fetchAgents, fetchLoans, fetchStats } from "@/lib/api";
+import type {
+  AgentStatus,
+  Loan,
+  LoanStats,
+  LendNetEvent,
+  NegotiationMessage,
+} from "@/lib/types";
+
+export default function Dashboard() {
+  const [agents, setAgents] = useState<AgentStatus[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [stats, setStats] = useState<LoanStats | null>(null);
+  const [events, setEvents] = useState<LendNetEvent[]>([]);
+  const [negotiation, setNegotiation] = useState<NegotiationMessage[]>([]);
+  const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [a, l, s] = await Promise.all([
+        fetchAgents(),
+        fetchLoans(),
+        fetchStats(),
+      ]);
+      setAgents(a);
+      setLoans(l);
+      setStats(s);
+      setConnected(true);
+
+      // Show selected loan's negotiation, or latest
+      const target = selectedLoanId
+        ? l.find((loan) => loan.id === selectedLoanId)
+        : [...l].reverse().find((loan) => loan.negotiationLog?.length > 0);
+      if (target?.negotiationLog) setNegotiation(target.negotiationLog);
+    } catch {
+      setConnected(false);
+    }
+  }, [selectedLoanId]);
+
+  // SSE for real-time events
+  useEffect(() => {
+    const source = new EventSource("/api/events");
+    source.onmessage = (e) => {
+      try {
+        const event: LendNetEvent = JSON.parse(e.data);
+        setEvents((prev) => [event, ...prev].slice(0, 100));
+        refresh();
+      } catch {
+        // ignore
+      }
+    };
+    source.onerror = () => setConnected(false);
+    source.onopen = () => setConnected(true);
+    return () => source.close();
+  }, [refresh]);
+
+  // Initial load + periodic refresh
+  useEffect(() => {
+    refresh();
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [refresh]);
+
+  return (
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b border-white/10 bg-white/[0.02] px-6 py-4">
+        <div className="max-w-[1440px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-emerald-400 tracking-tight">
+                LendNet
+              </h1>
+              <p className="text-[11px] text-white/30 mt-0.5">
+                Autonomous P2P Agent Lending Network &middot; Powered by Tether
+                WDK + Claude AI
+              </p>
+            </div>
+            <div
+              className={`h-2 w-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}
+              title={connected ? "Connected" : "Disconnected"}
+            />
+          </div>
+          <StatsBar data={stats} agentCount={agents.length} />
+        </div>
+      </header>
+
+      <main className="max-w-[1440px] mx-auto p-6 space-y-5">
+        {/* Connection Warning */}
+        {!connected && (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 text-sm text-yellow-400 text-center">
+            Cannot connect to LendNet API. Make sure the backend is running:{" "}
+            <code className="bg-white/5 px-2 py-0.5 rounded">npm run dev</code>
+          </div>
+        )}
+
+        {/* Top Row: Create Agent + Request Loan */}
+        <div className="grid grid-cols-2 gap-5">
+          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400 mb-4">
+              Create Agent
+            </h2>
+            <CreateAgentForm onCreated={refresh} />
+          </section>
+
+          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400 mb-4">
+              Request Loan
+            </h2>
+            <RequestLoanForm agents={agents} onCompleted={refresh} />
+          </section>
+        </div>
+
+        {/* Agents + Loans */}
+        <div className="grid grid-cols-2 gap-5">
+          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
+                AI Agents ({agents.length})
+              </h2>
+            </div>
+            {agents.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white/20 text-sm mb-2">No agents yet</p>
+                <p className="text-white/10 text-xs">
+                  Create a lender and a borrower above to get started
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {agents.map((agent) => (
+                  <AgentCard key={agent.id} agent={agent} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400">
+                Loans ({loans.length})
+              </h2>
+            </div>
+            {loans.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-white/20 text-sm mb-2">No loans yet</p>
+                <p className="text-white/10 text-xs">
+                  Request a loan above to start AI-powered negotiation
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {loans.map((loan) => (
+                  <div
+                    key={loan.id}
+                    onClick={() => setSelectedLoanId(loan.id)}
+                    className={`cursor-pointer transition-all ${
+                      selectedLoanId === loan.id
+                        ? "ring-1 ring-violet-500/50 rounded-lg"
+                        : ""
+                    }`}
+                  >
+                    <LoanCard loan={loan} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Repay Section */}
+            {loans.some(
+              (l) => l.status === "funded" || l.status === "repaying",
+            ) && (
+              <div className="mt-4 pt-4 border-t border-white/5">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-cyan-400 mb-3">
+                  Repay Loan
+                </h3>
+                <RepayLoanForm loans={loans} onCompleted={refresh} />
+              </div>
+            )}
+          </section>
+        </div>
+
+        {/* Negotiation Log */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400">
+              AI Negotiation Log
+              {selectedLoanId && (
+                <span className="ml-2 text-cyan-400">
+                  ({selectedLoanId})
+                </span>
+              )}
+            </h2>
+            {selectedLoanId && (
+              <button
+                onClick={() => setSelectedLoanId(null)}
+                className="text-xs text-white/30 hover:text-white/60 transition-colors"
+              >
+                Show latest
+              </button>
+            )}
+          </div>
+          <NegotiationLog messages={negotiation} />
+        </section>
+
+        {/* Event Feed */}
+        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
+              Live Event Feed ({events.length})
+            </h2>
+            {events.length > 0 && (
+              <button
+                onClick={() => setEvents([])}
+                className="text-xs text-white/30 hover:text-white/60 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <EventFeed events={events} />
+        </section>
+
+        {/* Footer */}
+        <footer className="text-center text-[11px] text-white/15 py-4">
+          LendNet &mdash; Built for Tether Hackathon Galactica: WDK Edition 1
+          &middot; Apache 2.0 &middot; Sepolia Testnet
+        </footer>
+      </main>
+    </div>
+  );
+}
