@@ -75,3 +75,39 @@ export interface LendNetEvent {
   type: string;
   [key: string]: unknown;
 }
+
+export interface NetworkPolicy {
+  baseInterestRate: number;
+  minCollateralPercent: number;
+  maxLoanAmount: number;
+  lastUpdated: number;
+  reasoning: string;
+}
+
+export interface ConsensusMessage {
+  round: number;
+  phase: "DELIBERATION" | "DISCUSSION" | "VOTE";
+  agentId: string;
+  agentName: string;
+  agentRole: "lender" | "borrower" | "both";
+  position: string;
+  vote?: "APPROVE" | "DENY" | "ABSTAIN";
+  reasoning: string;
+  timestamp: number;
+}
+
+export interface ConsensusSession {
+  id: string;
+  type: "rate_committee" | "loan_approval" | "dispute_resolution";
+  topic: string;
+  participants: string[];
+  messages: ConsensusMessage[];
+  outcome: {
+    decision: string;
+    votes: Record<string, string>;
+    passed: boolean;
+    reasoning: string;
+  } | null;
+  startedAt: number;
+  completedAt?: number;
+}

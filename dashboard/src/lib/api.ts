@@ -1,22 +1,31 @@
-import type { AgentStatus, Loan, LoanStats } from "./types";
+import type { AgentStatus, Loan, LoanStats, NetworkPolicy, ConsensusSession } from "./types";
 
-const BASE = "/api";
+const BASE = "http://localhost:3000/api";
+
+async function parseError(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.json();
+    return body.error || fallback;
+  } catch {
+    return `${fallback} (${res.status})`;
+  }
+}
 
 export async function fetchAgents(): Promise<AgentStatus[]> {
   const res = await fetch(`${BASE}/agents`);
-  if (!res.ok) throw new Error("Failed to fetch agents");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch agents"));
   return res.json();
 }
 
 export async function fetchLoans(): Promise<Loan[]> {
   const res = await fetch(`${BASE}/loans`);
-  if (!res.ok) throw new Error("Failed to fetch loans");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch loans"));
   return res.json();
 }
 
 export async function fetchStats(): Promise<LoanStats> {
   const res = await fetch(`${BASE}/loans/stats`);
-  if (!res.ok) throw new Error("Failed to fetch stats");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch stats"));
   return res.json();
 }
 
@@ -29,7 +38,7 @@ export async function createAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, role }),
   });
-  if (!res.ok) throw new Error("Failed to create agent");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to create agent"));
   return res.json();
 }
 
@@ -45,7 +54,7 @@ export async function requestLoan(params: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) throw new Error("Failed to request loan");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to request loan"));
   return res.json();
 }
 
@@ -58,6 +67,36 @@ export async function repayLoan(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ amount }),
   });
-  if (!res.ok) throw new Error("Failed to repay loan");
+  if (!res.ok) throw new Error(await parseError(res, "Failed to repay loan"));
+  return res.json();
+}
+
+// ─── Governance API ────────────────────────────────────
+
+export async function fetchPolicy(): Promise<NetworkPolicy> {
+  const res = await fetch(`${BASE}/governance/policy`);
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch policy"));
+  return res.json();
+}
+
+export async function fetchGovernanceSessions(): Promise<ConsensusSession[]> {
+  const res = await fetch(`${BASE}/governance/sessions`);
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch sessions"));
+  return res.json();
+}
+
+export async function conveneRateCommittee(): Promise<ConsensusSession> {
+  const res = await fetch(`${BASE}/governance/rate-committee`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await parseError(res, "Failed to convene rate committee"));
+  return res.json();
+}
+
+export async function conveneDispute(loanId: string): Promise<ConsensusSession> {
+  const res = await fetch(`${BASE}/governance/dispute/${loanId}`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(await parseError(res, "Failed to start dispute resolution"));
   return res.json();
 }
