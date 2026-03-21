@@ -22,13 +22,21 @@ const DEFAULT_REPUTATION: AgentReputation = {
   avgRepaymentTime: 0,
 };
 
+// Starting demo balance for new agents (internal ledger)
+const DEMO_STARTING_BALANCE = 1000;
+
 /**
  * Manages the lifecycle of AI lending agents.
  * Each agent has a WDK wallet, credit profile, and autonomous decision-making via Claude.
+ *
+ * Uses a dual-layer balance system:
+ * - Internal ledger: tracks balances for demo/negotiation (agents start with $1000 USDT)
+ * - On-chain (WDK): attempts real Sepolia USDT transfers when on-chain funds are available
  */
 export class AgentManager {
   private agents: Map<string, AgentProfile> = new Map();
   private wallets: Map<string, AgentWalletManager> = new Map();
+  private ledger: Map<string, number> = new Map(); // internal USDT balances
   private creditScorer: CreditScorer;
   private negotiationEngine: NegotiationEngine;
   private loanManager: LoanManager;
@@ -74,9 +82,10 @@ export class AgentManager {
 
     this.agents.set(agent.id, agent);
     this.wallets.set(agent.id, wallet);
+    this.ledger.set(agent.id, DEMO_STARTING_BALANCE);
 
     this.emit({ type: 'agent_created', agent });
-    console.log(`[Agent] Created ${name} (${role}) — wallet: ${address}`);
+    console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — demo balance: $${DEMO_STARTING_BALANCE}`);
 
     return agent;
   }
@@ -84,14 +93,27 @@ export class AgentManager {
   /**
    * Get credit report for an agent
    */
+  getLedgerBalance(agentId: string): number {
+    return this.ledger.get(agentId) ?? 0;
+  }
+
+  async getEffectiveBalance(agentId: string): Promise<number> {
+    const ledgerBal = this.getLedgerBalance(agentId);
+    try {
+      const onChainBal = await this.getWallet(agentId).getUsdtBalance();
+      return ledgerBal + onChainBal;
+    } catch {
+      return ledgerBal;
+    }
+  }
+
   async getCreditReport(agentId: string): Promise<CreditReport> {
     const agent = this.getAgent(agentId);
-    const wallet = this.getWallet(agentId);
-    const balances = await wallet.getBalances();
+    const effectiveBalance = await this.getEffectiveBalance(agentId);
 
     const walletMetrics: WalletMetrics = {
       address: agent.walletAddress,
-      balanceUsdt: balances.balanceUsdt,
+      balanceUsdt: effectiveBalance,
       transactionCount:
         agent.reputation.totalLoansIssued +
         agent.reputation.totalLoansBorrowed +
@@ -143,8 +165,8 @@ export class AgentManager {
     console.log(`[Credit] Score: ${creditReport.score} (${creditReport.riskLevel})`);
 
     // 4. Negotiate terms via LLM
-    const lenderBalance = await this.getWallet(lender.id).getUsdtBalance();
-    console.log(`[Negotiation] Starting negotiation...`);
+    const lenderBalance = await this.getEffectiveBalance(lender.id);
+    console.log(`[Negotiation] Starting negotiation... (lender balance: $${lenderBalance})`);
     const negotiation = await this.negotiationEngine.negotiate(
       request,
       creditReport,
@@ -169,31 +191,47 @@ export class AgentManager {
       `[Loan] Terms agreed: $${negotiation.finalTerms.amount} @ ${negotiation.finalTerms.interestRate}% with ${negotiation.finalTerms.collateralPercent}% collateral`
     );
 
-    // 6. Execute funding via WDK
-    const lenderWallet = this.getWallet(lender.id);
-    const borrowerWallet = this.getWallet(borrower.id);
+    // 6. Execute funding — internal ledger + attempt on-chain WDK transfer
+    const amount = negotiation.finalTerms.amount;
+    const lenderLedger = this.getLedgerBalance(lender.id);
 
-    try {
-      const transferResult = await lenderWallet.transferUsdt(
-        borrower.walletAddress,
-        negotiation.finalTerms.amount
-      );
-
-      this.loanManager.recordFunding(loan.id, transferResult.hash);
-
-      // Update reputations
-      lender.reputation.totalLoansIssued++;
-      lender.reputation.totalVolumeLent += negotiation.finalTerms.amount;
-      borrower.reputation.totalLoansBorrowed++;
-      borrower.reputation.totalVolumeBorrowed += negotiation.finalTerms.amount;
-
-      console.log(`[Funded] TX: ${transferResult.hash}`);
-
-      return { loanId: loan.id, agreed: true, txHash: transferResult.hash };
-    } catch (error: any) {
-      console.error(`[Loan] Funding failed: ${error.message}`);
+    if (lenderLedger < amount) {
+      console.log(`[Loan] Lender has insufficient balance ($${lenderLedger} < $${amount})`);
       return { loanId: loan.id, agreed: false };
     }
+
+    // Update internal ledger
+    this.ledger.set(lender.id, lenderLedger - amount);
+    this.ledger.set(borrower.id, (this.getLedgerBalance(borrower.id)) + amount);
+
+    // Attempt real on-chain transfer via WDK (best-effort)
+    let txHash = `LEDGER-${Date.now().toString(36).toUpperCase()}`;
+    try {
+      const lenderWallet = this.getWallet(lender.id);
+      const onChainBalance = await lenderWallet.getUsdtBalance();
+      if (onChainBalance >= amount) {
+        const transferResult = await lenderWallet.transferUsdt(
+          borrower.walletAddress,
+          amount
+        );
+        txHash = transferResult.hash;
+        console.log(`[Funded] On-chain TX: ${txHash}`);
+      } else {
+        console.log(`[Funded] Via internal ledger (on-chain balance too low: $${onChainBalance})`);
+      }
+    } catch (error: any) {
+      console.log(`[Funded] Via internal ledger (on-chain transfer failed: ${error.message})`);
+    }
+
+    this.loanManager.recordFunding(loan.id, txHash);
+
+    // Update reputations
+    lender.reputation.totalLoansIssued++;
+    lender.reputation.totalVolumeLent += amount;
+    borrower.reputation.totalLoansBorrowed++;
+    borrower.reputation.totalVolumeBorrowed += amount;
+
+    return { loanId: loan.id, agreed: true, txHash };
   }
 
   /**
@@ -208,21 +246,36 @@ export class AgentManager {
     const remaining = totalOwed - loan.totalRepaid;
     const repayAmount = amount || remaining; // full repayment by default
 
-    const borrowerWallet = this.getWallet(loan.borrowerId);
     const lender = this.getAgent(loan.lenderId);
+    const borrowerLedger = this.getLedgerBalance(loan.borrowerId);
+
+    if (borrowerLedger < repayAmount) {
+      throw new Error(`Insufficient balance. Have $${borrowerLedger.toFixed(2)}, need $${repayAmount.toFixed(2)}`);
+    }
 
     console.log(`[Repayment] ${loan.borrowerId} repaying $${repayAmount} on ${loanId}`);
 
-    const result = await borrowerWallet.transferUsdt(
-      lender.walletAddress,
-      repayAmount
-    );
+    // Update internal ledger
+    this.ledger.set(loan.borrowerId, borrowerLedger - repayAmount);
+    this.ledger.set(lender.id, (this.getLedgerBalance(lender.id)) + repayAmount);
 
-    const updatedLoan = this.loanManager.recordRepayment(
-      loanId,
-      repayAmount,
-      result.hash
-    );
+    // Attempt real on-chain transfer via WDK (best-effort)
+    let txHash = `LEDGER-${Date.now().toString(36).toUpperCase()}`;
+    try {
+      const borrowerWallet = this.getWallet(loan.borrowerId);
+      const onChainBal = await borrowerWallet.getUsdtBalance();
+      if (onChainBal >= repayAmount) {
+        const result = await borrowerWallet.transferUsdt(lender.walletAddress, repayAmount);
+        txHash = result.hash;
+        console.log(`[Repayment] On-chain TX: ${txHash}`);
+      } else {
+        console.log(`[Repayment] Via internal ledger`);
+      }
+    } catch (error: any) {
+      console.log(`[Repayment] Via internal ledger (on-chain failed: ${error.message})`);
+    }
+
+    const updatedLoan = this.loanManager.recordRepayment(loanId, repayAmount, txHash);
 
     // Update reputation on completion
     if (updatedLoan.status === 'completed') {
@@ -232,9 +285,9 @@ export class AgentManager {
     }
 
     const newRemaining = totalOwed - updatedLoan.totalRepaid;
-    console.log(`[Repayment] TX: ${result.hash} — remaining: $${newRemaining.toFixed(2)}`);
+    console.log(`[Repayment] TX: ${txHash} — remaining: $${newRemaining.toFixed(2)}`);
 
-    return { txHash: result.hash, remaining: newRemaining };
+    return { txHash, remaining: newRemaining };
   }
 
   /**
@@ -273,12 +326,23 @@ export class AgentManager {
   async getAgentStatus(agentId: string) {
     const agent = this.getAgent(agentId);
     const wallet = this.getWallet(agentId);
-    const balances = await wallet.getBalances();
+    let onChainBalances = { address: agent.walletAddress, balanceUsdt: 0, balanceEth: 0 };
+    try {
+      onChainBalances = await wallet.getBalances();
+    } catch {
+      // on-chain query may fail, use defaults
+    }
+    const ledgerBalance = this.getLedgerBalance(agentId);
     const loans = this.loanManager.getLoansByAgent(agentId);
 
     return {
       ...agent,
-      balances,
+      balances: {
+        ...onChainBalances,
+        balanceUsdt: ledgerBalance + onChainBalances.balanceUsdt,
+        ledgerUsdt: ledgerBalance,
+        onChainUsdt: onChainBalances.balanceUsdt,
+      },
       activeLoans: loans.filter(
         (l) => !['completed', 'defaulted', 'pending'].includes(l.status)
       ),
