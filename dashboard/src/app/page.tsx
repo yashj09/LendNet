@@ -9,13 +9,16 @@ import StatsBar from "@/components/StatsBar";
 import CreateAgentForm from "@/components/CreateAgentForm";
 import RequestLoanForm from "@/components/RequestLoanForm";
 import RepayLoanForm from "@/components/RepayLoanForm";
-import { fetchAgents, fetchLoans, fetchStats } from "@/lib/api";
+import GovernancePanel from "@/components/GovernancePanel";
+import { fetchAgents, fetchLoans, fetchStats, fetchPolicy, fetchGovernanceSessions } from "@/lib/api";
 import type {
   AgentStatus,
   Loan,
   LoanStats,
   LendNetEvent,
   NegotiationMessage,
+  NetworkPolicy,
+  ConsensusSession,
 } from "@/lib/types";
 
 export default function Dashboard() {
@@ -26,17 +29,23 @@ export default function Dashboard() {
   const [negotiation, setNegotiation] = useState<NegotiationMessage[]>([]);
   const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
+  const [policy, setPolicy] = useState<NetworkPolicy | null>(null);
+  const [govSessions, setGovSessions] = useState<ConsensusSession[]>([]);
 
   const refresh = useCallback(async () => {
     try {
-      const [a, l, s] = await Promise.all([
+      const [a, l, s, p, g] = await Promise.all([
         fetchAgents(),
         fetchLoans(),
         fetchStats(),
+        fetchPolicy().catch(() => null),
+        fetchGovernanceSessions().catch(() => []),
       ]);
       setAgents(a);
       setLoans(l);
       setStats(s);
+      if (p) setPolicy(p);
+      setGovSessions(g);
       setConnected(true);
 
       // Show selected loan's negotiation, or latest
@@ -51,7 +60,7 @@ export default function Dashboard() {
 
   // SSE for real-time events
   useEffect(() => {
-    const source = new EventSource("/api/events");
+    const source = new EventSource("http://localhost:3000/api/events");
     source.onmessage = (e) => {
       try {
         const event: LendNetEvent = JSON.parse(e.data);
@@ -213,6 +222,26 @@ export default function Dashboard() {
             )}
           </div>
           <NegotiationLog messages={negotiation} />
+        </section>
+
+        {/* AI Governance */}
+        <section className="rounded-xl border border-amber-500/20 bg-amber-500/[0.02] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-400">
+              AI Consensus Governance
+            </h2>
+            {govSessions.length > 0 && (
+              <span className="text-[10px] text-white/20">
+                {govSessions.length} session{govSessions.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <GovernancePanel
+            policy={policy}
+            sessions={govSessions}
+            agentCount={agents.length}
+            onCompleted={refresh}
+          />
         </section>
 
         {/* Event Feed */}
