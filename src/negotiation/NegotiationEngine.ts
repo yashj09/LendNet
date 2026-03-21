@@ -142,13 +142,13 @@ export class NegotiationEngine {
       const proposal = lastProposal;
 
       if (currentTurn === 'lender') {
+        // Only send last proposal as context (not full history) to minimize tokens
         const lenderResponse = await this.callAgent(
           lenderSystem,
           [
-            ...lenderHistory,
             {
               role: 'user',
-              content: `The borrower proposes: $${proposal.amount} USDT at ${proposal.interest_rate}% interest for ${proposal.duration_hours} hours with ${proposal.collateral_percent}% collateral. Their reasoning: "${proposal.reasoning}". Their credit score: ${creditReport.score} (${creditReport.riskLevel}). Recommended collateral for this score: ${creditReport.recommendedCollateral}%. Evaluate and respond.`,
+              content: `Round ${round}/${CONFIG.maxNegotiationRounds}. The borrower proposes: $${proposal.amount} USDT at ${proposal.interest_rate}% interest for ${proposal.duration_hours} hours with ${proposal.collateral_percent}% collateral. Reasoning: "${proposal.reasoning}". Credit score: ${creditReport.score} (${creditReport.riskLevel}). Recommended collateral: ${creditReport.recommendedCollateral}%. Evaluate and respond.`,
             },
           ],
           lenderHistory
@@ -175,13 +175,13 @@ export class NegotiationEngine {
         lastProposal = lenderResponse;
         currentTurn = 'borrower';
       } else {
+        // Only send last proposal as context (not full history) to minimize tokens
         const borrowerResponse = await this.callAgent(
           borrowerSystem,
           [
-            ...borrowerHistory,
             {
               role: 'user',
-              content: `The lender counter-offers: $${proposal.amount} USDT at ${proposal.interest_rate}% interest for ${proposal.duration_hours} hours with ${proposal.collateral_percent}% collateral. Their reasoning: "${proposal.reasoning}". Evaluate and respond.`,
+              content: `Round ${round}/${CONFIG.maxNegotiationRounds}. The lender counter-offers: $${proposal.amount} USDT at ${proposal.interest_rate}% interest for ${proposal.duration_hours} hours with ${proposal.collateral_percent}% collateral. Reasoning: "${proposal.reasoning}". Evaluate and respond.`,
             },
           ],
           borrowerHistory
@@ -222,7 +222,7 @@ export class NegotiationEngine {
   ): Promise<NegotiationResponse> {
     const response = await this.client.messages.create({
       model: CONFIG.claudeHaiku,
-      max_tokens: 1024,
+      max_tokens: 400,
       system: systemPrompt,
       tools: [negotiationTool],
       tool_choice: { type: 'tool' as const, name: 'negotiation_response' },
@@ -268,7 +268,8 @@ RULES:
 - For HIGH risk: require 60-100% collateral, 12-25% interest
 - For VERY_HIGH risk: REJECT unless exceptional circumstances
 - You can COUNTER with different terms or ACCEPT/REJECT
-- Be willing to negotiate but protect the protocol's capital`;
+- Be willing to negotiate but protect the protocol's capital
+- Keep reasoning to 2-3 sentences maximum`;
   }
 
   private buildBorrowerPrompt(request: LoanRequest, report: CreditReport): string {
@@ -291,6 +292,7 @@ RULES:
 - Never accept interest rates above ${request.offeredRate * 1.5}%
 - Never accept collateral above ${Math.min(request.offeredCollateral * 2, 100)}%
 - If terms are unreasonable, REJECT
-- Be strategic: a slightly worse deal that gets approved is better than no deal`;
+- Be strategic: a slightly worse deal that gets approved is better than no deal
+- Keep reasoning to 2-3 sentences maximum`;
   }
 }
