@@ -1,0 +1,17 @@
+{
+  "id": "lendnet",
+  "name": "LendNet P2P Lending",
+  "description": "Autonomous P2P agent lending tools powered by Tether WDK. Create agents, check credit scores, request loans, negotiate terms, and track repayments.",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "description": "LendNet API base URL",
+        "default": "http://localhost:3000"
+      }
+    },
+    "additionalProperties": false
+  }
+}
