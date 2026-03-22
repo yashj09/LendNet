@@ -75,6 +75,7 @@ export interface LoanStats {
   repaying: number;
   completed: number;
   defaulted: number;
+  rejected: number;
   totalVolume: number;
   totalRepaid: number;
 }

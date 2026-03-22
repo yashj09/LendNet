@@ -8,6 +8,7 @@ const statusStyle: Record<string, string> = {
   repaying: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
   completed: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
   defaulted: "bg-red-500/15 text-red-400 border-red-500/30",
+  rejected: "bg-red-500/15 text-red-400 border-red-500/30",
 };
 
 export default function LoanCard({ loan }: { loan: Loan }) {

@@ -154,7 +154,7 @@ export type LendNetEvent =
   | { type: 'agent_created'; agent: AgentProfile }
   | { type: 'loan_requested'; loan: Loan }
   | { type: 'negotiation_round'; loanId: string; message: NegotiationMessage }
-  | { type: 'loan_funded'; loanId: string; txHash: string }
+  | { type: 'loan_funded'; loanId: string; txHash: string; amount: number }
   | { type: 'repayment_made'; loanId: string; amount: number; txHash: string }
   | { type: 'loan_completed'; loanId: string }
   | { type: 'loan_defaulted'; loanId: string }
@@ -164,6 +164,8 @@ export type LendNetEvent =
   | { type: 'governance_completed'; session: ConsensusSession }
   | { type: 'aave_supply'; agentId: string; amount: number; txHash: string }
   | { type: 'aave_withdraw'; agentId: string; amount: number; txHash: string }
+  | { type: 'aave_borrow'; agentId: string; amount: number; txHash: string }
+  | { type: 'aave_repay'; agentId: string; amount: number; txHash: string }
   | { type: 'autonomous_tick'; tick: number; actions: string[] }
   | { type: 'autonomous_started' }
   | { type: 'autonomous_stopped' };

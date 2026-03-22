@@ -6,18 +6,37 @@ import { AutonomousLoop } from "../agents/AutonomousLoop.js";
 import { LoanManager } from "../loans/LoanManager.js";
 import type { LendNetEvent } from "../config/types.js";
 
+interface ServerOptions {
+  deploymentTarget?: "local" | "vercel";
+}
+
 export function createServer(
   agentManager: AgentManager,
   loanManager: LoanManager,
+  options: ServerOptions = {},
 ) {
   const app = express();
   app.use(cors());
   app.use(express.json());
 
+  const deploymentTarget = options.deploymentTarget || "local";
+  const isVercelDemo = deploymentTarget === "vercel";
+
+  function unsupportedOnVercel(res: express.Response, feature: string) {
+    res.status(503).json({
+      error: `${feature} is disabled in the Vercel demo deployment`,
+      mode: "vercel-demo",
+    });
+  }
+
   // SSE for real-time events
   const sseClients: express.Response[] = [];
 
   app.get("/api/events", (req, res) => {
+    if (isVercelDemo) {
+      return unsupportedOnVercel(res, "Server-sent events");
+    }
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -183,6 +202,7 @@ export function createServer(
       }
       const wallet = agentManager.getWallet(req.params.id);
       const result = await wallet.supplyToAave(amount);
+      broadcastEvent({ type: 'aave_supply', agentId: req.params.id, amount, txHash: result.hash });
       res.json({ hash: result.hash, fee: result.fee.toString(), amount });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -197,6 +217,7 @@ export function createServer(
       }
       const wallet = agentManager.getWallet(req.params.id);
       const result = await wallet.withdrawFromAave(amount);
+      broadcastEvent({ type: 'aave_withdraw', agentId: req.params.id, amount, txHash: result.hash });
       res.json({ hash: result.hash, fee: result.fee.toString(), amount });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -211,6 +232,7 @@ export function createServer(
       }
       const wallet = agentManager.getWallet(req.params.id);
       const result = await wallet.borrowFromAave(amount);
+      broadcastEvent({ type: 'aave_borrow', agentId: req.params.id, amount, txHash: result.hash });
       res.json({ hash: result.hash, fee: result.fee.toString(), amount });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -225,6 +247,7 @@ export function createServer(
       }
       const wallet = agentManager.getWallet(req.params.id);
       const result = await wallet.repayToAave(amount);
+      broadcastEvent({ type: 'aave_repay', agentId: req.params.id, amount, txHash: result.hash });
       res.json({ hash: result.hash, fee: result.fee.toString(), amount });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -232,10 +255,17 @@ export function createServer(
   });
 
   // ─── Autonomous Loop Routes ──────────────────────────
-  const autonomousLoop = new AutonomousLoop(agentManager, loanManager);
-  autonomousLoop.onEvent(broadcastEvent);
+  const autonomousLoop = isVercelDemo
+    ? null
+    : new AutonomousLoop(agentManager, loanManager);
+
+  autonomousLoop?.onEvent(broadcastEvent);
 
   app.post("/api/autonomous/start", (_req, res) => {
+    if (!autonomousLoop) {
+      return unsupportedOnVercel(res, "Autonomous loop controls");
+    }
+
     if (autonomousLoop.isRunning) {
       return res.json({ status: "already_running", ticks: autonomousLoop.ticks });
     }
@@ -245,6 +275,10 @@ export function createServer(
   });
 
   app.post("/api/autonomous/stop", (_req, res) => {
+    if (!autonomousLoop) {
+      return unsupportedOnVercel(res, "Autonomous loop controls");
+    }
+
     if (!autonomousLoop.isRunning) {
       return res.json({ status: "not_running" });
     }
@@ -254,6 +288,15 @@ export function createServer(
   });
 
   app.get("/api/autonomous/status", (_req, res) => {
+    if (!autonomousLoop) {
+      return res.json({
+        running: false,
+        ticks: 0,
+        supported: false,
+        mode: "vercel-demo",
+      });
+    }
+
     res.json({
       running: autonomousLoop.isRunning,
       ticks: autonomousLoop.ticks,
@@ -261,11 +304,12 @@ export function createServer(
   });
 
   // Health check
-  app.get("/", (_req, res) => {
+  app.get(["/", "/api"], (_req, res) => {
     res.json({
       status: "ok",
       service: "LendNet API",
-      dashboard: "http://localhost:3001",
+      mode: isVercelDemo ? "vercel-demo" : "local",
+      dashboard: process.env.DASHBOARD_URL || "http://localhost:3001",
     });
   });
 

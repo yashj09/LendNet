@@ -10,6 +10,7 @@ import CreateAgentForm from "@/components/CreateAgentForm";
 import RequestLoanForm from "@/components/RequestLoanForm";
 import RepayLoanForm from "@/components/RepayLoanForm";
 import GovernancePanel from "@/components/GovernancePanel";
+import TxToastContainer, { useTxToasts } from "@/components/TxToast";
 import { fetchAgents, fetchLoans, fetchStats, fetchPolicy, fetchGovernanceSessions, startAutonomous, stopAutonomous, fetchAutonomousStatus } from "@/lib/api";
 import type {
   AgentStatus,
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const [govSessions, setGovSessions] = useState<ConsensusSession[]>([]);
   const [activeLoanId, setActiveLoanId] = useState<string | null>(null);
   const [autonomous, setAutonomous] = useState<{ running: boolean; ticks: number }>({ running: false, ticks: 0 });
+  const { toasts, addToast } = useTxToasts();
 
   const refresh = useCallback(async () => {
     try {
@@ -73,6 +75,21 @@ export default function Dashboard() {
         const event: LendNetEvent = JSON.parse(e.data);
         setEvents((prev) => [event, ...prev].slice(0, 100));
         refresh();
+
+        // Show tx toast for on-chain events
+        const txHash = event.txHash as string | undefined;
+        if (txHash) {
+          const messages: Record<string, string> = {
+            loan_funded: `Loan Funded — $${event.amount ?? ""}`,
+            repayment_made: `Repayment Sent — $${event.amount ?? ""}`,
+            aave_supply: `Supplied to Aave — $${event.amount ?? ""}`,
+            aave_withdraw: `Withdrew from Aave — $${event.amount ?? ""}`,
+            aave_borrow: `Borrowed from Aave — $${event.amount ?? ""}`,
+            aave_repay: `Repaid Aave Debt — $${event.amount ?? ""}`,
+          };
+          const msg = messages[event.type] || `Transaction Confirmed`;
+          addToast(msg, txHash);
+        }
       } catch {
         // ignore
       }
@@ -316,6 +333,8 @@ export default function Dashboard() {
           &middot; Apache 2.0 &middot; Sepolia Testnet
         </footer>
       </main>
+
+      <TxToastContainer toasts={toasts} />
     </div>
   );
 }

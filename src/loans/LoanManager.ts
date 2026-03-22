@@ -87,7 +87,7 @@ export class LoanManager {
     loan.dueAt = Date.now() + loan.terms.durationMs;
     loan.txHashes.funding = txHash;
 
-    this.emit({ type: 'loan_funded', loanId, txHash });
+    this.emit({ type: 'loan_funded', loanId, txHash, amount: loan.terms.amount });
     return loan;
   }
 
