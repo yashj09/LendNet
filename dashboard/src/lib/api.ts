@@ -131,3 +131,23 @@ export async function aaveWithdraw(agentId: string, amount: number): Promise<{ h
   if (!res.ok) throw new Error(await parseError(res, "Aave withdraw failed"));
   return res.json();
 }
+
+// ─── Autonomous Loop API ──────────────────────────────
+
+export async function startAutonomous(): Promise<{ status: string }> {
+  const res = await fetch(`${BASE}/autonomous/start`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseError(res, "Failed to start autonomous mode"));
+  return res.json();
+}
+
+export async function stopAutonomous(): Promise<{ status: string }> {
+  const res = await fetch(`${BASE}/autonomous/stop`, { method: "POST" });
+  if (!res.ok) throw new Error(await parseError(res, "Failed to stop autonomous mode"));
+  return res.json();
+}
+
+export async function fetchAutonomousStatus(): Promise<{ running: boolean; ticks: number }> {
+  const res = await fetch(`${BASE}/autonomous/status`);
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch autonomous status"));
+  return res.json();
+}

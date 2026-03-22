@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { CONFIG } from "../config/index.js";
 import { AgentManager } from "../agents/AgentManager.js";
+import { AutonomousLoop } from "../agents/AutonomousLoop.js";
 import { LoanManager } from "../loans/LoanManager.js";
 import type { LendNetEvent } from "../config/types.js";
 
@@ -226,6 +227,35 @@ export function createServer(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ─── Autonomous Loop Routes ──────────────────────────
+  const autonomousLoop = new AutonomousLoop(agentManager, loanManager);
+  autonomousLoop.onEvent(broadcastEvent);
+
+  app.post("/api/autonomous/start", (_req, res) => {
+    if (autonomousLoop.isRunning) {
+      return res.json({ status: "already_running", ticks: autonomousLoop.ticks });
+    }
+    autonomousLoop.start();
+    broadcastEvent({ type: 'autonomous_started' });
+    res.json({ status: "started" });
+  });
+
+  app.post("/api/autonomous/stop", (_req, res) => {
+    if (!autonomousLoop.isRunning) {
+      return res.json({ status: "not_running" });
+    }
+    autonomousLoop.stop();
+    broadcastEvent({ type: 'autonomous_stopped' });
+    res.json({ status: "stopped", ticks: autonomousLoop.ticks });
+  });
+
+  app.get("/api/autonomous/status", (_req, res) => {
+    res.json({
+      running: autonomousLoop.isRunning,
+      ticks: autonomousLoop.ticks,
+    });
   });
 
   // Health check

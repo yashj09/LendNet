@@ -10,7 +10,7 @@ import CreateAgentForm from "@/components/CreateAgentForm";
 import RequestLoanForm from "@/components/RequestLoanForm";
 import RepayLoanForm from "@/components/RepayLoanForm";
 import GovernancePanel from "@/components/GovernancePanel";
-import { fetchAgents, fetchLoans, fetchStats, fetchPolicy, fetchGovernanceSessions } from "@/lib/api";
+import { fetchAgents, fetchLoans, fetchStats, fetchPolicy, fetchGovernanceSessions, startAutonomous, stopAutonomous, fetchAutonomousStatus } from "@/lib/api";
 import type {
   AgentStatus,
   Loan,
@@ -32,21 +32,24 @@ export default function Dashboard() {
   const [policy, setPolicy] = useState<NetworkPolicy | null>(null);
   const [govSessions, setGovSessions] = useState<ConsensusSession[]>([]);
   const [activeLoanId, setActiveLoanId] = useState<string | null>(null);
+  const [autonomous, setAutonomous] = useState<{ running: boolean; ticks: number }>({ running: false, ticks: 0 });
 
   const refresh = useCallback(async () => {
     try {
-      const [a, l, s, p, g] = await Promise.all([
+      const [a, l, s, p, g, auto] = await Promise.all([
         fetchAgents(),
         fetchLoans(),
         fetchStats(),
         fetchPolicy().catch(() => null),
         fetchGovernanceSessions().catch(() => []),
+        fetchAutonomousStatus().catch(() => ({ running: false, ticks: 0 })),
       ]);
       setAgents(a);
       setLoans(l);
       setStats(s);
       if (p) setPolicy(p);
       setGovSessions(g);
+      setAutonomous(auto);
       setConnected(true);
 
       // Show selected loan's negotiation, or latest
@@ -114,7 +117,40 @@ export default function Dashboard() {
               title={connected ? "Connected" : "Disconnected"}
             />
           </div>
-          <StatsBar data={stats} agentCount={agents.length} />
+          <div className="flex items-center gap-3">
+            <StatsBar data={stats} agentCount={agents.length} />
+            <button
+              onClick={async () => {
+                try {
+                  if (autonomous.running) {
+                    await stopAutonomous();
+                    setAutonomous((prev) => ({ ...prev, running: false }));
+                  } else {
+                    await startAutonomous();
+                    setAutonomous((prev) => ({ ...prev, running: true }));
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                autonomous.running
+                  ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/30"
+                  : "bg-white/5 text-white/40 border-white/10 hover:text-white/60 hover:border-white/20"
+              }`}
+              title={autonomous.running ? `Autonomous mode active (${autonomous.ticks} ticks)` : "Start autonomous agent mode"}
+            >
+              {autonomous.running ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  AUTO
+                  <span className="text-[10px] text-cyan-400/60">#{autonomous.ticks}</span>
+                </span>
+              ) : (
+                "AUTO"
+              )}
+            </button>
+          </div>
         </div>
       </header>
 

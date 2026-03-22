@@ -162,4 +162,7 @@ export type LendNetEvent =
   | { type: 'governance_message'; sessionId: string; message: ConsensusMessage }
   | { type: 'governance_completed'; session: ConsensusSession }
   | { type: 'aave_supply'; agentId: string; amount: number; txHash: string }
-  | { type: 'aave_withdraw'; agentId: string; amount: number; txHash: string };
+  | { type: 'aave_withdraw'; agentId: string; amount: number; txHash: string }
+  | { type: 'autonomous_tick'; tick: number; actions: string[] }
+  | { type: 'autonomous_started' }
+  | { type: 'autonomous_stopped' };
