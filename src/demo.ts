@@ -1,23 +1,31 @@
 import { LoanManager } from './loans/LoanManager.js';
 import { AgentManager } from './agents/AgentManager.js';
+import { LendNetToken } from './contracts/LendNetToken.js';
 import { startServer } from './api/server.js';
+import { CONFIG, setTokenAddress } from './config/index.js';
 
 /**
  * LendNet Demo — Full lifecycle demonstration
  *
  * This demo creates AI lending agents, runs autonomous loan negotiations,
- * executes on-chain USDT transfers via Tether WDK, and tracks repayments.
- *
- * NOTE: Requires funded Sepolia wallets with mock USDT.
- * Get test tokens from: https://dashboard.pimlico.io/test-erc20-faucet
+ * and executes real on-chain token transfers via Tether WDK on Sepolia.
  */
 async function demo() {
   console.log('╔══════════════════════════════════════════════════╗');
   console.log('║       LendNet Demo — Agent Lending in Action    ║');
   console.log('╚══════════════════════════════════════════════════╝\n');
 
+  if (!CONFIG.deployerPrivateKey) {
+    console.error('[FATAL] Set DEPLOYER_PRIVATE_KEY in .env');
+    process.exit(1);
+  }
+
+  const token = new LendNetToken(CONFIG.deployerPrivateKey);
+  await token.initialize(CONFIG.tokenAddress || undefined);
+  setTokenAddress(token.address);
+
   const loanManager = new LoanManager();
-  const agentManager = new AgentManager(loanManager);
+  const agentManager = new AgentManager(loanManager, token);
 
   // Start the dashboard server
   startServer(agentManager, loanManager);

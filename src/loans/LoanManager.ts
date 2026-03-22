@@ -71,7 +71,7 @@ export class LoanManager {
       loan.terms = finalTerms;
       loan.status = 'approved';
     } else {
-      loan.status = 'pending'; // back to pending, could match with another lender
+      loan.status = 'rejected';
     }
 
     return loan;
@@ -110,6 +110,15 @@ export class LoanManager {
       this.emit({ type: 'loan_completed', loanId });
     }
 
+    return loan;
+  }
+
+  /**
+   * Mark a loan as rejected (committee denied, negotiation failed, or funding failed)
+   */
+  rejectLoan(loanId: string): Loan {
+    const loan = this.getLoan(loanId);
+    loan.status = 'rejected';
     return loan;
   }
 
@@ -180,6 +189,7 @@ export class LoanManager {
       total: loans.length,
       pending: loans.filter((l) => l.status === 'pending').length,
       negotiating: loans.filter((l) => l.status === 'negotiating').length,
+      rejected: loans.filter((l) => l.status === 'rejected').length,
       approved: loans.filter((l) => l.status === 'approved').length,
       funded: loans.filter((l) => l.status === 'funded').length,
       repaying: loans.filter((l) => l.status === 'repaying').length,

@@ -45,9 +45,11 @@ export function createServer(
   app.get("/api/agents", async (_req, res) => {
     try {
       const agents = agentManager.getAllAgents();
-      const statuses = await Promise.all(
-        agents.map((a) => agentManager.getAgentStatus(a.id)),
-      );
+      // Sequential to avoid RPC batch limits on free-tier providers
+      const statuses = [];
+      for (const a of agents) {
+        statuses.push(await agentManager.getAgentStatus(a.id));
+      }
       res.json(statuses);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

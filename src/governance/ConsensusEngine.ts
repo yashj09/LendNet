@@ -264,8 +264,8 @@ You are participating in a GOVERNANCE CONSENSUS session.
 Your credit score is ${agent.creditScore}/850.
 
 YOUR ROLE INTERESTS:
-${agent.role === 'lender' || agent.role === 'both' ? '- As a lender, you prefer HIGHER interest rates and MORE collateral to protect capital.' : ''}
-${agent.role === 'borrower' || agent.role === 'both' ? '- As a borrower, you prefer LOWER interest rates and LESS collateral for easier access to loans.' : ''}
+${agent.role === 'lender' || agent.role === 'both' ? '- As a lender, you want reasonable returns but also want the network to grow. More loans = more fees.' : ''}
+${agent.role === 'borrower' || agent.role === 'both' ? '- As a borrower, you want accessible loans with fair terms.' : ''}
 
 PROPOSAL: "${topic}"
 TYPE: ${type}
@@ -278,10 +278,17 @@ CURRENT POLICY:
 - Min Collateral: ${this.currentPolicy.minCollateralPercent}%
 - Max Loan Amount: $${this.currentPolicy.maxLoanAmount}
 
+IMPORTANT CONTEXT:
+- This is a growing P2P network. New borrowers with no history should be given a chance — that's how they BUILD history.
+- A credit score above 500 is acceptable. Above 600 is good. Only scores below 400 are truly risky.
+- The network benefits from loan volume. Denying too many loans starves the network of activity and fees.
+- If collateral and interest rate adequately cover the risk, the loan should be APPROVED.
+- Lean toward APPROVE unless there's a clear, specific reason to deny (e.g., amount far exceeds borrower's capacity).
+
 This is Phase 1 (DELIBERATION). Form your INDEPENDENT opinion. Argue from your role's perspective.
 Keep your position to 1-2 sentences and reasoning to 2-3 sentences.
 ${type === 'rate_committee' ? 'Include a suggested_value for the new base interest rate.' : ''}
-${type === 'loan_approval' ? 'Vote APPROVE to fund this loan, DENY to reject it, or ABSTAIN.' : ''}
+${type === 'loan_approval' ? 'Vote APPROVE to fund this loan, DENY to reject it, or ABSTAIN. Default to APPROVE if terms are reasonable.' : ''}
 ${type === 'dispute_resolution' ? 'Vote APPROVE to grant leniency (extend/restructure), DENY to enforce default.' : ''}`;
 
     return base;
@@ -305,6 +312,7 @@ You've seen what others think. Consider their arguments, then cast your FINAL VO
 - DENY: You reject the proposal
 - ABSTAIN: You choose not to vote
 
+Remember: the network grows through lending activity. If the terms (interest + collateral) adequately cover the risk, APPROVE.
 Keep position to 1-2 sentences. Be decisive. Simple majority wins.
 ${type === 'rate_committee' ? 'Include a suggested_value for the new base interest rate.' : ''}`;
   }

@@ -4,6 +4,7 @@ import { CreditScorer } from '../credit/CreditScorer.js';
 import { NegotiationEngine } from '../negotiation/NegotiationEngine.js';
 import { ConsensusEngine } from '../governance/ConsensusEngine.js';
 import { LoanManager } from '../loans/LoanManager.js';
+import { LendNetToken } from '../contracts/LendNetToken.js';
 import type {
   AgentProfile,
   AgentReputation,
@@ -25,34 +26,32 @@ const DEFAULT_REPUTATION: AgentReputation = {
   avgRepaymentTime: 0,
 };
 
-// Starting demo balance for new agents (internal ledger)
-const DEMO_STARTING_BALANCE = 1000;
+// Starting balance minted to each new agent
+const AGENT_STARTING_BALANCE = 1000;
 
 /**
  * Manages the lifecycle of AI lending agents.
- * Each agent has a WDK wallet, credit profile, and autonomous decision-making via Claude.
- *
- * Uses a dual-layer balance system:
- * - Internal ledger: tracks balances for demo/negotiation (agents start with $1000 USDT)
- * - On-chain (WDK): attempts real Sepolia USDT transfers when on-chain funds are available
+ * Each agent has a WDK wallet with real on-chain LNUSD tokens.
+ * All balances are real — minted via LendNetToken on Sepolia.
  */
 export class AgentManager {
   private agents: Map<string, AgentProfile> = new Map();
   private wallets: Map<string, AgentWalletManager> = new Map();
-  private ledger: Map<string, number> = new Map(); // internal USDT balances
   private creditScorer: CreditScorer;
   private negotiationEngine: NegotiationEngine;
   private consensusEngine: ConsensusEngine;
   private loanManager: LoanManager;
+  private token: LendNetToken;
   private eventListeners: Array<(event: LendNetEvent) => void> = [];
   private loansSinceLastRateReview: number = 0;
-  private rateReviewInterval: number = 5; // auto-trigger rate committee every N loans
+  private rateReviewInterval: number = 5;
 
-  constructor(loanManager: LoanManager) {
+  constructor(loanManager: LoanManager, token: LendNetToken) {
     this.creditScorer = new CreditScorer();
     this.negotiationEngine = new NegotiationEngine();
     this.consensusEngine = new ConsensusEngine();
     this.loanManager = loanManager;
+    this.token = token;
   }
 
   onEvent(listener: (event: LendNetEvent) => void): void {
@@ -67,6 +66,7 @@ export class AgentManager {
 
   /**
    * Create a new agent with a fresh WDK wallet.
+   * Mints LNUSD tokens and sends ETH for gas — all on-chain.
    */
   async createAgent(
     name: string,
@@ -83,44 +83,45 @@ export class AgentManager {
       role,
       walletAddress: address,
       seedPhrase: seed,
-      creditScore: 575, // starting score for new agents
+      creditScore: 650, // new agents start with decent credit
       reputation: { ...DEFAULT_REPUTATION },
     };
 
     this.agents.set(agent.id, agent);
     this.wallets.set(agent.id, wallet);
-    this.ledger.set(agent.id, DEMO_STARTING_BALANCE);
+
+    // Fund agent on-chain: ETH for gas + LNUSD tokens
+    try {
+      await this.token.fundGas(address);
+      await this.token.mint(address, AGENT_STARTING_BALANCE);
+      console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — funded: ${AGENT_STARTING_BALANCE} LNUSD + gas`);
+    } catch (err: any) {
+      console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — on-chain funding failed: ${err.message}`);
+    }
 
     this.emit({ type: 'agent_created', agent });
-    console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — demo balance: $${DEMO_STARTING_BALANCE}`);
-
     return agent;
   }
 
   /**
-   * Get credit report for an agent
+   * Get the real on-chain LNUSD balance for an agent.
    */
-  getLedgerBalance(agentId: string): number {
-    return this.ledger.get(agentId) ?? 0;
-  }
-
-  async getEffectiveBalance(agentId: string): Promise<number> {
-    const ledgerBal = this.getLedgerBalance(agentId);
+  async getBalance(agentId: string): Promise<number> {
     try {
-      const onChainBal = await this.getWallet(agentId).getUsdtBalance();
-      return ledgerBal + onChainBal;
+      const agent = this.getAgent(agentId);
+      return await this.token.balanceOf(agent.walletAddress);
     } catch {
-      return ledgerBal;
+      return 0;
     }
   }
 
   async getCreditReport(agentId: string): Promise<CreditReport> {
     const agent = this.getAgent(agentId);
-    const effectiveBalance = await this.getEffectiveBalance(agentId);
+    const balance = await this.getBalance(agentId);
 
     const walletMetrics: WalletMetrics = {
       address: agent.walletAddress,
-      balanceUsdt: effectiveBalance,
+      balanceUsdt: balance,
       transactionCount:
         agent.reputation.totalLoansIssued +
         agent.reputation.totalLoansBorrowed +
@@ -128,7 +129,7 @@ export class AgentManager {
       walletAgeDays: Math.max(
         1,
         Math.floor((Date.now() - 1000 * 60 * 60 * 24 * 30) / (1000 * 60 * 60 * 24))
-      ), // simulate 30 days for demo
+      ),
       repaymentHistory: {
         onTime: agent.reputation.successfulRepayments,
         late: 0,
@@ -137,16 +138,13 @@ export class AgentManager {
     };
 
     const report = this.creditScorer.score(agent, walletMetrics);
-
-    // Update agent's stored credit score
     agent.creditScore = report.score;
     this.emit({ type: 'credit_updated', agentId, newScore: report.score });
-
     return report;
   }
 
   /**
-   * Full loan flow: request -> negotiate -> fund -> track
+   * Full loan flow: request -> committee -> negotiate -> fund (all on-chain)
    */
   async requestLoan(request: LoanRequest): Promise<{
     loanId: string;
@@ -156,42 +154,40 @@ export class AgentManager {
     const borrower = this.getAgent(request.borrowerId);
     console.log(`\n[Loan] ${borrower.name} requests $${request.amount} — "${request.purpose}"`);
 
-    // 1. Create loan record
     const loan = this.loanManager.createLoan(request);
 
-    // 2. Find best available lender
     const lender = this.findBestLender(request);
     if (!lender) {
       console.log('[Loan] No available lender found');
+      this.loanManager.rejectLoan(loan.id);
       return { loanId: loan.id, agreed: false };
     }
     console.log(`[Loan] Matched with lender: ${lender.name}`);
 
-    // 3. Credit check
     const creditReport = await this.getCreditReport(request.borrowerId);
     console.log(`[Credit] Score: ${creditReport.score} (${creditReport.riskLevel})`);
 
-    // 3.5 Committee approval for risky/large loans
+    // Committee approval for risky/large loans
     if (this.needsCommitteeApproval(request, creditReport.score)) {
-      console.log(`[Governance] Loan triggers committee review (amount: $${request.amount}, score: ${creditReport.score})`);
+      console.log(`[Governance] Loan triggers committee review`);
       const approval = await this.conveenLoanApproval(borrower, creditReport, request, loan.id);
       if (!approval.outcome?.passed) {
         console.log('[Governance] Committee DENIED the loan');
+        this.loanManager.rejectLoan(loan.id);
         return { loanId: loan.id, agreed: false };
       }
-      console.log('[Governance] Committee APPROVED the loan — proceeding to negotiation');
+      console.log('[Governance] Committee APPROVED — proceeding to negotiation');
     }
 
-    // 4. Negotiate terms via LLM
-    const lenderBalance = await this.getEffectiveBalance(lender.id);
-    console.log(`[Negotiation] Starting negotiation... (lender balance: $${lenderBalance})`);
+    // Negotiate terms via LLM
+    const lenderBalance = await this.getBalance(lender.id);
+    console.log(`[Negotiation] Starting... (lender balance: $${lenderBalance})`);
     const negotiation = await this.negotiationEngine.negotiate(
       request,
       creditReport,
       lenderBalance
     );
 
-    // 5. Record negotiation result
     this.loanManager.setNegotiationResult(
       loan.id,
       lender.id,
@@ -201,77 +197,33 @@ export class AgentManager {
     );
 
     if (!negotiation.agreed || !negotiation.finalTerms) {
-      console.log('[Loan] Negotiation failed — no agreement reached');
+      console.log('[Loan] Negotiation failed — no agreement');
+      // setNegotiationResult already sets status to 'rejected' when agreed=false
       return { loanId: loan.id, agreed: false };
     }
 
-    console.log(
-      `[Loan] Terms agreed: $${negotiation.finalTerms.amount} @ ${negotiation.finalTerms.interestRate}% with ${negotiation.finalTerms.collateralPercent}% collateral`
-    );
-
-    // 6. Execute funding — internal ledger + on-chain settlement
     const amount = negotiation.finalTerms.amount;
-    const lenderLedger = this.getLedgerBalance(lender.id);
+    console.log(`[Loan] Terms agreed: $${amount} @ ${negotiation.finalTerms.interestRate}% with ${negotiation.finalTerms.collateralPercent}% collateral`);
 
-    if (lenderLedger < amount) {
-      console.log(`[Loan] Lender has insufficient balance ($${lenderLedger} < $${amount})`);
-      return { loanId: loan.id, agreed: false };
-    }
-
-    // Update internal ledger
-    this.ledger.set(lender.id, lenderLedger - amount);
-    this.ledger.set(borrower.id, (this.getLedgerBalance(borrower.id)) + amount);
-
-    // Attempt real on-chain settlement via Aave V3 + WDK
-    // Flow: Lender withdraws from Aave (if deposited) → transfers to borrower → borrower receives on-chain
-    let txHash = `LEDGER-${Date.now().toString(36).toUpperCase()}`;
-    const txHashes: string[] = [];
+    // Execute real on-chain funding: lender → borrower P2P transfer
     const lenderWallet = this.getWallet(lender.id);
+    let txHash = '';
 
-    // Step 1: Check if lender has Aave USDT and can withdraw from Aave first
     try {
-      const aavePosition = await lenderWallet.getAavePosition();
-      if (aavePosition && aavePosition.totalCollateralBase > 0n) {
-        // Lender has funds in Aave — withdraw to get liquid USDT
-        const withdrawResult = await lenderWallet.withdrawFromAave(amount);
-        txHashes.push(withdrawResult.hash);
-        console.log(`[Funded] Aave withdraw TX: ${withdrawResult.hash}`);
-        this.emit({ type: 'aave_withdraw', agentId: lender.id, amount, txHash: withdrawResult.hash });
+      const onChainBal = await lenderWallet.getUsdtBalance();
+      if (onChainBal < amount) {
+        console.log(`[Loan] Lender has insufficient on-chain balance ($${onChainBal} < $${amount})`);
+        this.loanManager.rejectLoan(loan.id);
+        return { loanId: loan.id, agreed: false };
       }
-    } catch (error: any) {
-      console.log(`[Funded] Aave withdraw skipped: ${error.message}`);
-    }
 
-    // Step 2: Try direct WDK USDT P2P transfer to borrower (the actual settlement)
-    try {
-      const onChainBalance = await lenderWallet.getUsdtBalance();
-      const aaveUsdtBalance = await lenderWallet.getAaveUsdtBalance();
-      const totalAvailable = onChainBalance + aaveUsdtBalance;
-      // Use whichever USDT token the lender has
-      if (onChainBalance >= amount) {
-        const transferResult = await lenderWallet.transferUsdt(
-          borrower.walletAddress,
-          amount
-        );
-        txHash = transferResult.hash;
-        txHashes.push(transferResult.hash);
-        console.log(`[Funded] On-chain P2P TX: ${txHash}`);
-      } else if (aaveUsdtBalance >= amount) {
-        // Lender has Aave test USDT — supply to Aave as DeFi proof
-        const supplyResult = await lenderWallet.supplyToAave(amount);
-        txHash = supplyResult.hash;
-        txHashes.push(supplyResult.hash);
-        console.log(`[Funded] Aave supply TX (DeFi settlement): ${txHash}`);
-        this.emit({ type: 'aave_supply', agentId: lender.id, amount, txHash: supplyResult.hash });
-      } else {
-        console.log(`[Funded] Via internal ledger (on-chain balance: $${totalAvailable})`);
-      }
-    } catch (error: any) {
-      console.log(`[Funded] Via internal ledger (on-chain transfer failed: ${error.message})`);
-    }
-
-    if (txHashes.length === 0) {
-      console.log(`[Funded] Via internal ledger only — no on-chain funds available`);
+      const result = await lenderWallet.transferUsdt(borrower.walletAddress, amount);
+      txHash = result.hash;
+      console.log(`[Funded] On-chain P2P TX: ${txHash}`);
+    } catch (err: any) {
+      console.log(`[Funded] On-chain transfer failed: ${err.message}`);
+      this.loanManager.rejectLoan(loan.id);
+      return { loanId: loan.id, agreed: false };
     }
 
     this.loanManager.recordFunding(loan.id, txHash);
@@ -286,7 +238,6 @@ export class AgentManager {
     this.loansSinceLastRateReview++;
     if (this.loansSinceLastRateReview >= this.rateReviewInterval && this.getAllAgents().length >= 3) {
       this.loansSinceLastRateReview = 0;
-      // Run in background — don't block the loan response
       this.conveneRateCommittee().catch((err) =>
         console.log(`[Governance] Auto rate review failed: ${err.message}`)
       );
@@ -296,7 +247,7 @@ export class AgentManager {
   }
 
   /**
-   * Process a loan repayment from borrower to lender
+   * Process a loan repayment — real on-chain borrower → lender transfer
    */
   async repayLoan(
     loanId: string,
@@ -305,80 +256,44 @@ export class AgentManager {
     const loan = this.loanManager.getLoan(loanId);
     const totalOwed = this.loanManager.getTotalOwed(loan);
     const remaining = totalOwed - loan.totalRepaid;
-    const repayAmount = amount || remaining; // full repayment by default
+    const repayAmount = amount || remaining;
 
     const lender = this.getAgent(loan.lenderId);
-    const borrowerLedger = this.getLedgerBalance(loan.borrowerId);
+    const borrowerWallet = this.getWallet(loan.borrowerId);
 
-    if (borrowerLedger < repayAmount) {
-      throw new Error(`Insufficient balance. Have $${borrowerLedger.toFixed(2)}, need $${repayAmount.toFixed(2)}`);
+    // Check real on-chain balance
+    const borrowerBal = await borrowerWallet.getUsdtBalance();
+    if (borrowerBal < repayAmount) {
+      throw new Error(`Insufficient on-chain balance. Have $${borrowerBal.toFixed(2)}, need $${repayAmount.toFixed(2)}`);
     }
 
     console.log(`[Repayment] ${loan.borrowerId} repaying $${repayAmount} on ${loanId}`);
 
-    // Update internal ledger
-    this.ledger.set(loan.borrowerId, borrowerLedger - repayAmount);
-    this.ledger.set(lender.id, (this.getLedgerBalance(lender.id)) + repayAmount);
-
-    // Attempt real on-chain settlement: borrower transfers to lender
-    let txHash = `LEDGER-${Date.now().toString(36).toUpperCase()}`;
-    const borrowerWallet = this.getWallet(loan.borrowerId);
-
-    try {
-      const onChainBal = await borrowerWallet.getUsdtBalance();
-      if (onChainBal >= repayAmount) {
-        // P2P transfer: borrower → lender
-        const result = await borrowerWallet.transferUsdt(lender.walletAddress, repayAmount);
-        txHash = result.hash;
-        console.log(`[Repayment] On-chain P2P TX: ${txHash}`);
-
-        // After receiving repayment, lender can supply to Aave for yield
-        try {
-          const lenderWallet = this.getWallet(lender.id);
-          const lenderBal = await lenderWallet.getAaveUsdtBalance();
-          if (lenderBal >= repayAmount) {
-            const supplyResult = await lenderWallet.supplyToAave(repayAmount);
-            console.log(`[Repayment] Lender re-supplied to Aave: ${supplyResult.hash}`);
-            this.emit({ type: 'aave_supply', agentId: lender.id, amount: repayAmount, txHash: supplyResult.hash });
-          }
-        } catch {
-          // Lender re-supply is best-effort
-        }
-      } else {
-        console.log(`[Repayment] Via internal ledger (on-chain balance: $${onChainBal})`);
-      }
-    } catch (error: any) {
-      console.log(`[Repayment] Via internal ledger (on-chain failed: ${error.message})`);
-    }
+    // Real on-chain P2P transfer: borrower → lender
+    const result = await borrowerWallet.transferUsdt(lender.walletAddress, repayAmount);
+    const txHash = result.hash;
+    console.log(`[Repayment] On-chain P2P TX: ${txHash}`);
 
     const updatedLoan = this.loanManager.recordRepayment(loanId, repayAmount, txHash);
 
-    // Update reputation on completion
     if (updatedLoan.status === 'completed') {
       const borrower = this.getAgent(loan.borrowerId);
       borrower.reputation.successfulRepayments++;
-      console.log(`[Loan] ${loanId} COMPLETED — borrower reputation updated`);
+      console.log(`[Loan] ${loanId} COMPLETED`);
     }
 
     const newRemaining = totalOwed - updatedLoan.totalRepaid;
-    console.log(`[Repayment] TX: ${txHash} — remaining: $${newRemaining.toFixed(2)}`);
-
+    console.log(`[Repayment] Remaining: $${newRemaining.toFixed(2)}`);
     return { txHash, remaining: newRemaining };
   }
 
-  /**
-   * Find the best available lender for a loan request
-   */
   private findBestLender(request: LoanRequest): AgentProfile | null {
     const candidates = Array.from(this.agents.values()).filter(
       (a) =>
         (a.role === 'lender' || a.role === 'both') &&
         a.id !== request.borrowerId
     );
-
     if (candidates.length === 0) return null;
-
-    // Sort by credit score (higher = more trustworthy lender)
     candidates.sort((a, b) => b.creditScore - a.creditScore);
     return candidates[0];
   }
@@ -404,32 +319,27 @@ export class AgentManager {
     const wallet = this.getWallet(agentId);
     let onChainBalances = { address: agent.walletAddress, balanceUsdt: 0, balanceEth: 0 };
     let aavePosition = null;
-    let aaveUsdtBalance = 0;
 
     try {
       onChainBalances = await wallet.getBalances();
     } catch {
-      // on-chain query may fail, use defaults
+      // on-chain query may fail
     }
 
     try {
       aavePosition = await wallet.getAavePosition();
-      aaveUsdtBalance = await wallet.getAaveUsdtBalance();
     } catch {
-      // Aave query may fail, use defaults
+      // Aave query may fail
     }
 
-    const ledgerBalance = this.getLedgerBalance(agentId);
     const loans = this.loanManager.getLoansByAgent(agentId);
 
     return {
       ...agent,
       balances: {
         ...onChainBalances,
-        balanceUsdt: ledgerBalance + onChainBalances.balanceUsdt,
-        ledgerUsdt: ledgerBalance,
+        balanceUsdt: onChainBalances.balanceUsdt,
         onChainUsdt: onChainBalances.balanceUsdt,
-        aaveUsdt: aaveUsdtBalance,
       },
       aavePosition: aavePosition ? {
         totalCollateral: aavePosition.totalCollateralBase.toString(),
@@ -439,13 +349,13 @@ export class AgentManager {
         ltv: aavePosition.ltv.toString(),
       } : null,
       activeLoans: loans.filter(
-        (l) => !['completed', 'defaulted', 'pending'].includes(l.status)
+        (l) => !['completed', 'defaulted', 'pending', 'rejected'].includes(l.status)
       ),
       loanHistory: loans,
     };
   }
 
-  // ─── Governance: AI Consensus ────────────────────────
+  // ─── Governance ────────────────────────────────────────
 
   getConsensusEngine(): ConsensusEngine {
     return this.consensusEngine;
@@ -455,22 +365,16 @@ export class AgentManager {
     return this.consensusEngine.getPolicy();
   }
 
-  /**
-   * Rate Committee: All agents debate and vote on the network's base interest rate.
-   * Auto-triggers every N loans, or can be called manually.
-   */
   async conveneRateCommittee(): Promise<ConsensusSession> {
     const agents = this.getAllAgents();
     if (agents.length < 3) {
-      throw new Error('Rate committee requires at least 3 agents in the network');
+      throw new Error('Rate committee requires at least 3 agents');
     }
-
     const stats = this.loanManager.getStats();
     const policy = this.consensusEngine.getPolicy();
-
     return this.consensusEngine.runConsensus(
       'rate_committee',
-      `Should the network base interest rate change from ${policy.baseInterestRate}%? Review network health and propose a new rate.`,
+      `Should the network base interest rate change from ${policy.baseInterestRate}%?`,
       {
         currentBaseRate: policy.baseInterestRate,
         totalLoans: stats.total,
@@ -486,10 +390,6 @@ export class AgentManager {
     );
   }
 
-  /**
-   * Loan Approval Committee: All agents evaluate a risky/large loan before it proceeds.
-   * Triggered when loan amount > $200 OR borrower credit score < 600.
-   */
   async conveenLoanApproval(
     borrower: AgentProfile,
     creditReport: CreditReport,
@@ -497,7 +397,6 @@ export class AgentManager {
     loanId?: string,
   ): Promise<ConsensusSession> {
     const agents = this.getAllAgents();
-
     return this.consensusEngine.runConsensus(
       'loan_approval',
       `Should the network approve a $${request.amount} loan to ${borrower.name}?`,
@@ -520,21 +419,15 @@ export class AgentManager {
     );
   }
 
-  /**
-   * Dispute Resolution: All agents deliberate on an overdue loan.
-   * Instead of auto-defaulting, agents vote to EXTEND, RESTRUCTURE, or DEFAULT.
-   */
   async conveneDisputeResolution(loanId: string): Promise<ConsensusSession> {
     const loan = this.loanManager.getLoan(loanId);
     const agents = this.getAllAgents();
     if (agents.length < 3) {
       throw new Error('Dispute resolution requires at least 3 agents');
     }
-
     const totalOwed = this.loanManager.getTotalOwed(loan);
     const borrower = this.getAgent(loan.borrowerId);
     const repaidPercent = totalOwed > 0 ? ((loan.totalRepaid / totalOwed) * 100).toFixed(1) : '0';
-
     return this.consensusEngine.runConsensus(
       'dispute_resolution',
       `Loan ${loanId} is overdue. Should the network grant leniency or enforce default?`,
@@ -556,12 +449,9 @@ export class AgentManager {
     );
   }
 
-  /**
-   * Check if a loan request needs committee approval.
-   * Threshold: amount > $200 OR borrower credit score < 600
-   */
   private needsCommitteeApproval(request: LoanRequest, creditScore: number): boolean {
-    return (request.amount > 200 || creditScore < 600) && this.getAllAgents().length >= 3;
+    // Only trigger committee for genuinely risky loans — large amounts or very low credit
+    return (request.amount > 500 || creditScore < 450) && this.getAllAgents().length >= 3;
   }
 
   dispose(): void {

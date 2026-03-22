@@ -120,7 +120,7 @@ export class AutonomousLoop {
       const timeUntilDue = loan.dueAt - now;
       if (timeUntilDue > 2 * 60 * 1000) continue;
 
-      const borrowerBalance = this.agentManager.getLedgerBalance(loan.borrowerId);
+      const borrowerBalance = await this.agentManager.getBalance(loan.borrowerId);
       if (borrowerBalance <= 0) continue;
 
       // Repay as much as possible
@@ -182,9 +182,9 @@ export class AutonomousLoop {
         .filter(l => ['funded', 'repaying', 'negotiating', 'approved', 'pending'].includes(l.status));
       if (activeLoans.length > 0) continue;
 
-      // Only borrow if balance is below threshold (< 30% of starting balance)
-      const balance = this.agentManager.getLedgerBalance(borrower.id);
-      if (balance > 300) continue;
+      // Borrow if balance is below threshold — agents actively seek loans
+      const balance = await this.agentManager.getBalance(borrower.id);
+      if (balance > 1200) continue; // most agents qualify (starting balance is $1000)
 
       // Don't borrow if credit score is terrible (already defaulted too much)
       if (borrower.creditScore < 350) continue;

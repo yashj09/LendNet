@@ -27,7 +27,8 @@ export type LoanStatus =
   | 'funded'        // USDT transferred to borrower
   | 'repaying'      // partial repayments made
   | 'completed'     // fully repaid
-  | 'defaulted';    // borrower failed to repay
+  | 'defaulted'     // borrower failed to repay
+  | 'rejected';     // denied by committee, negotiation, or funding failure
 
 export interface LoanTerms {
   amount: number;          // USDT

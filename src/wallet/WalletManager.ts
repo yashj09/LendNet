@@ -118,7 +118,7 @@ export class AgentWalletManager {
   async getBalances(): Promise<WalletInfo> {
     const [ethBalance, usdtBalance] = await Promise.all([
       this.account.getBalance(),
-      this.account.getTokenBalance(CONFIG.mockUsdtAddress),
+      this.account.getTokenBalance(CONFIG.tokenAddress),
     ]);
 
     return {
@@ -129,7 +129,7 @@ export class AgentWalletManager {
   }
 
   async getUsdtBalance(): Promise<number> {
-    const balance = await this.account.getTokenBalance(CONFIG.mockUsdtAddress);
+    const balance = await this.account.getTokenBalance(CONFIG.tokenAddress);
     return fromUsdtUnits(balance);
   }
 
@@ -146,7 +146,7 @@ export class AgentWalletManager {
     const units = toUsdtUnits(amount);
 
     // Check balance first
-    const balance = await this.account.getTokenBalance(CONFIG.mockUsdtAddress);
+    const balance = await this.account.getTokenBalance(CONFIG.tokenAddress);
     if (balance < units) {
       throw new Error(
         `Insufficient USDT balance. Have ${fromUsdtUnits(balance)}, need ${amount}`
@@ -154,7 +154,7 @@ export class AgentWalletManager {
     }
 
     const result = await this.account.transfer({
-      token: CONFIG.mockUsdtAddress,
+      token: CONFIG.tokenAddress,
       recipient: to,
       amount: units,
     });
@@ -172,7 +172,7 @@ export class AgentWalletManager {
   async quoteTransfer(to: string, amount: number): Promise<bigint> {
     const units = toUsdtUnits(amount);
     const quote = await this.account.quoteTransfer({
-      token: CONFIG.mockUsdtAddress,
+      token: CONFIG.tokenAddress,
       recipient: to,
       amount: units,
     });

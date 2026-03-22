@@ -4,8 +4,12 @@ dotenv.config();
 export const CONFIG = {
   // Sepolia testnet
   chainId: 11155111,
-  rpcUrl: process.env.SEPOLIA_RPC_URL || "https://sepolia.drpc.org",
-  mockUsdtAddress: "0xd077a400968890eacc75cdc901f0356c943e4fdb",
+  rpcUrl: process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
+
+  // LendNet USD token (self-deployed mintable ERC-20)
+  // Set LNUSD_ADDRESS in .env to reuse a previously deployed token
+  tokenAddress: process.env.LNUSD_ADDRESS || "",
+  deployerPrivateKey: process.env.DEPLOYER_PRIVATE_KEY || "",
 
   // Aave V3 Sepolia
   aaveUsdtAddress: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
@@ -30,7 +34,12 @@ export const CONFIG = {
   minCreditScore: 300,
   maxCreditScore: 850,
   defaultCollateralPercent: 100,
-} as const;
+};
+
+// Mutable — set after token deployment
+export function setTokenAddress(address: string): void {
+  (CONFIG as any).tokenAddress = address;
+}
 
 // Convert human-readable USDT amount to base units (6 decimals)
 export function toUsdtUnits(amount: number): bigint {
