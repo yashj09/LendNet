@@ -1,9 +1,26 @@
-import { createRequire } from 'module';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 import { ethers } from 'ethers';
 import { CONFIG } from '../config/index.js';
 
-const require = createRequire(import.meta.url);
-const artifact = require('./USDT.json') as { abi: any[]; bytecode: string };
+type TokenArtifact = { abi: any[]; bytecode: string };
+
+function loadArtifact(): TokenArtifact {
+  const candidatePaths = [
+    resolve(process.cwd(), 'src/contracts/USDT.json'),
+    resolve(process.cwd(), 'dist/contracts/USDT.json'),
+  ];
+
+  for (const artifactPath of candidatePaths) {
+    if (existsSync(artifactPath)) {
+      return JSON.parse(readFileSync(artifactPath, 'utf8')) as TokenArtifact;
+    }
+  }
+
+  throw new Error(
+    `USDT artifact not found. Checked: ${candidatePaths.join(', ')}`,
+  );
+}
 
 /**
  * Deploys and manages the USDT test token on Sepolia.
@@ -15,12 +32,12 @@ export class LendNetToken {
   private deployer: ethers.Wallet;
   private contract: ethers.Contract | null = null;
   private _address: string = '';
-  private artifact: { abi: any[]; bytecode: string };
+  private artifact: TokenArtifact;
 
   constructor(deployerPrivateKey: string) {
     this.provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
     this.deployer = new ethers.Wallet(deployerPrivateKey, this.provider);
-    this.artifact = artifact;
+    this.artifact = loadArtifact();
   }
 
   get address(): string {
