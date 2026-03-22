@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import AgentCard from "@/components/AgentCard";
 import LoanCard from "@/components/LoanCard";
-import NegotiationLog from "@/components/NegotiationLog";
+import NegotiationVisualizer from "@/components/NegotiationVisualizer";
 import EventFeed from "@/components/EventFeed";
 import StatsBar from "@/components/StatsBar";
 import CreateAgentForm from "@/components/CreateAgentForm";
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [connected, setConnected] = useState(false);
   const [policy, setPolicy] = useState<NetworkPolicy | null>(null);
   const [govSessions, setGovSessions] = useState<ConsensusSession[]>([]);
+  const [activeLoanId, setActiveLoanId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,7 +53,10 @@ export default function Dashboard() {
       const target = selectedLoanId
         ? l.find((loan) => loan.id === selectedLoanId)
         : [...l].reverse().find((loan) => loan.negotiationLog?.length > 0);
-      if (target?.negotiationLog) setNegotiation(target.negotiationLog);
+      if (target?.negotiationLog) {
+        setNegotiation(target.negotiationLog);
+        setActiveLoanId(target.id);
+      }
     } catch {
       setConnected(false);
     }
@@ -74,6 +78,14 @@ export default function Dashboard() {
     source.onopen = () => setConnected(true);
     return () => source.close();
   }, [refresh]);
+
+  // Find committee session linked to the active loan
+  const committeeSession = useMemo(() => {
+    if (!activeLoanId || !govSessions.length) return null;
+    return govSessions.find(
+      (s) => s.type === "loan_approval" && s.context?.loanId === activeLoanId
+    ) || null;
+  }, [activeLoanId, govSessions]);
 
   // Initial load + periodic refresh
   useEffect(() => {
@@ -201,11 +213,11 @@ export default function Dashboard() {
           </section>
         </div>
 
-        {/* Negotiation Log */}
-        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        {/* AI Negotiation */}
+        <section className="rounded-xl border border-violet-500/20 bg-violet-500/[0.02] p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400">
-              AI Negotiation Log
+              AI Negotiation
               {selectedLoanId && (
                 <span className="ml-2 text-cyan-400">
                   ({selectedLoanId})
@@ -221,7 +233,7 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          <NegotiationLog messages={negotiation} />
+          <NegotiationVisualizer messages={negotiation} committeeSession={committeeSession} />
         </section>
 
         {/* AI Governance */}
