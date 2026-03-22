@@ -1,6 +1,9 @@
+import { createRequire } from 'module';
 import { ethers } from 'ethers';
-import artifact from './USDT.json';
 import { CONFIG } from '../config/index.js';
+
+const require = createRequire(import.meta.url);
+const artifact = require('./USDT.json') as { abi: any[]; bytecode: string };
 
 /**
  * Deploys and manages the USDT test token on Sepolia.
