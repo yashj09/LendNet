@@ -160,4 +160,6 @@ export type LendNetEvent =
   | { type: 'credit_updated'; agentId: string; newScore: number }
   | { type: 'governance_started'; session: ConsensusSession }
   | { type: 'governance_message'; sessionId: string; message: ConsensusMessage }
-  | { type: 'governance_completed'; session: ConsensusSession };
+  | { type: 'governance_completed'; session: ConsensusSession }
+  | { type: 'aave_supply'; agentId: string; amount: number; txHash: string }
+  | { type: 'aave_withdraw'; agentId: string; amount: number; txHash: string };

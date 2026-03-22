@@ -7,6 +7,13 @@ export const CONFIG = {
   rpcUrl: process.env.SEPOLIA_RPC_URL || "https://sepolia.drpc.org",
   mockUsdtAddress: "0xd077a400968890eacc75cdc901f0356c943e4fdb",
 
+  // Aave V3 Sepolia
+  aaveUsdtAddress: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
+  aavePoolAddress: "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+  aaveUiPoolDataProvider: "0x69529987FA4A075D0C00B0128fa848dc9ebbE9CE",
+  aavePoolAddressesProvider: "0x012bAC54348C0E635dCAc9D5FB99f06F24136C9A",
+  aaveOracle: "0x2da88497588bf89281816106C7259e31AF45a663",
+
   // USDT has 6 decimals
   usdtDecimals: 6,
 

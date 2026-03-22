@@ -158,6 +158,76 @@ export function createServer(
     }
   });
 
+  // ─── Aave V3 DeFi Routes ─────────────────────────────
+  app.get("/api/agents/:id/aave", async (req, res) => {
+    try {
+      const wallet = agentManager.getWallet(req.params.id);
+      const [position, aaveBalance] = await Promise.all([
+        wallet.getAavePosition(),
+        wallet.getAaveUsdtBalance(),
+      ]);
+      res.json({ position, aaveUsdtBalance: aaveBalance });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/aave/supply", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+      const wallet = agentManager.getWallet(req.params.id);
+      const result = await wallet.supplyToAave(amount);
+      res.json({ hash: result.hash, fee: result.fee.toString(), amount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/aave/withdraw", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+      const wallet = agentManager.getWallet(req.params.id);
+      const result = await wallet.withdrawFromAave(amount);
+      res.json({ hash: result.hash, fee: result.fee.toString(), amount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/aave/borrow", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+      const wallet = agentManager.getWallet(req.params.id);
+      const result = await wallet.borrowFromAave(amount);
+      res.json({ hash: result.hash, fee: result.fee.toString(), amount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/agents/:id/aave/repay", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ error: "amount must be a positive number" });
+      }
+      const wallet = agentManager.getWallet(req.params.id);
+      const result = await wallet.repayToAave(amount);
+      res.json({ hash: result.hash, fee: result.fee.toString(), amount });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Health check
   app.get("/", (_req, res) => {
     res.json({
