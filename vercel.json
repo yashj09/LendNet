@@ -2,10 +2,12 @@
   "version": 2,
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "node_modules/sodium-native/**/*"
     },
     "api/[...route].ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "node_modules/sodium-native/**/*"
     }
   },
   "rewrites": [

@@ -1,17 +1,6 @@
 import { ethers } from 'ethers';
-import { readFileSync } from 'fs';
-import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import artifact from './USDT.json';
 import { CONFIG } from '../config/index.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load Hardhat-compiled USDT artifact (ABI + bytecode)
-function loadArtifact() {
-  const path = resolve(__dirname, '../../src/contracts/USDT.json');
-  return JSON.parse(readFileSync(path, 'utf8')) as { abi: any[]; bytecode: string };
-}
 
 /**
  * Deploys and manages the USDT test token on Sepolia.
@@ -28,7 +17,7 @@ export class LendNetToken {
   constructor(deployerPrivateKey: string) {
     this.provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
     this.deployer = new ethers.Wallet(deployerPrivateKey, this.provider);
-    this.artifact = loadArtifact();
+    this.artifact = artifact;
   }
 
   get address(): string {
