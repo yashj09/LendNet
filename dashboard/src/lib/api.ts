@@ -13,6 +13,18 @@ export const EVENTS_URL = `${BASE}/events`;
 export const LIVE_EVENTS_ENABLED =
   process.env.NEXT_PUBLIC_ENABLE_LIVE_EVENTS !== "false";
 
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
+  });
+  if (!res.ok) throw new Error(await parseError(res, `Failed to fetch ${path}`));
+  return res.json();
+}
+
 async function parseError(res: Response, fallback: string): Promise<string> {
   try {
     const body = await res.json();
@@ -23,21 +35,15 @@ async function parseError(res: Response, fallback: string): Promise<string> {
 }
 
 export async function fetchAgents(): Promise<AgentStatus[]> {
-  const res = await fetch(`${BASE}/agents`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch agents"));
-  return res.json();
+  return apiGet("/agents");
 }
 
 export async function fetchLoans(): Promise<Loan[]> {
-  const res = await fetch(`${BASE}/loans`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch loans"));
-  return res.json();
+  return apiGet("/loans");
 }
 
 export async function fetchStats(): Promise<LoanStats> {
-  const res = await fetch(`${BASE}/loans/stats`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch stats"));
-  return res.json();
+  return apiGet("/loans/stats");
 }
 
 export async function createAgent(
@@ -85,15 +91,11 @@ export async function repayLoan(
 // ─── Governance API ────────────────────────────────────
 
 export async function fetchPolicy(): Promise<NetworkPolicy> {
-  const res = await fetch(`${BASE}/governance/policy`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch policy"));
-  return res.json();
+  return apiGet("/governance/policy");
 }
 
 export async function fetchGovernanceSessions(): Promise<ConsensusSession[]> {
-  const res = await fetch(`${BASE}/governance/sessions`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch sessions"));
-  return res.json();
+  return apiGet("/governance/sessions");
 }
 
 export async function conveneRateCommittee(): Promise<ConsensusSession> {
@@ -118,9 +120,7 @@ export async function fetchAavePosition(agentId: string): Promise<{
   position: any;
   aaveUsdtBalance: number;
 }> {
-  const res = await fetch(`${BASE}/agents/${agentId}/aave`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch Aave position"));
-  return res.json();
+  return apiGet(`/agents/${agentId}/aave`);
 }
 
 export async function aaveSupply(agentId: string, amount: number): Promise<{ hash: string }> {
@@ -163,7 +163,5 @@ export async function fetchAutonomousStatus(): Promise<{
   supported?: boolean;
   mode?: string;
 }> {
-  const res = await fetch(`${BASE}/autonomous/status`);
-  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch autonomous status"));
-  return res.json();
+  return apiGet("/autonomous/status");
 }
