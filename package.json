@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc && cd dashboard && npm run build",
     "start": "node dist/index.js",
+    "build:api": "tsc",
     "dev": "tsx src/index.ts",
     "dev:dashboard": "cd dashboard && npm run dev",
     "demo": "tsx src/demo.ts",
