@@ -17,7 +17,15 @@ export interface AgentStatus {
     address: string;
     balanceUsdt: number;
     balanceEth: number;
+    aaveUsdt?: number;
   };
+  aavePosition?: {
+    totalCollateral: string;
+    totalDebt: string;
+    availableBorrows: string;
+    healthFactor: string;
+    ltv: string;
+  } | null;
   activeLoans: Loan[];
   loanHistory: Loan[];
 }
@@ -100,6 +108,7 @@ export interface ConsensusSession {
   id: string;
   type: "rate_committee" | "loan_approval" | "dispute_resolution";
   topic: string;
+  context?: Record<string, unknown>;
   participants: string[];
   messages: ConsensusMessage[];
   outcome: {

@@ -64,6 +64,17 @@ export default function AgentCard({ agent }: { agent: AgentStatus }) {
         />
       </div>
 
+      {/* Aave Position */}
+      {agent.aavePosition && (
+        <div className="mb-2 px-2 py-1.5 rounded bg-amber-500/5 border border-amber-500/20 text-[10px]">
+          <span className="text-amber-400 font-semibold uppercase tracking-wider">Aave V3</span>
+          <div className="grid grid-cols-2 gap-x-2 mt-1 text-white/40">
+            <span>Collateral: <span className="text-white/70">{agent.aavePosition.totalCollateral}</span></span>
+            <span>Debt: <span className="text-white/70">{agent.aavePosition.totalDebt}</span></span>
+          </div>
+        </div>
+      )}
+
       {/* Wallet Address */}
       <div className="text-[10px] text-white/30 font-mono break-all">
         {agent.walletAddress}

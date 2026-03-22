@@ -100,3 +100,34 @@ export async function conveneDispute(loanId: string): Promise<ConsensusSession> 
   if (!res.ok) throw new Error(await parseError(res, "Failed to start dispute resolution"));
   return res.json();
 }
+
+// ─── Aave V3 DeFi API ────────────────────────────────
+
+export async function fetchAavePosition(agentId: string): Promise<{
+  position: any;
+  aaveUsdtBalance: number;
+}> {
+  const res = await fetch(`${BASE}/agents/${agentId}/aave`);
+  if (!res.ok) throw new Error(await parseError(res, "Failed to fetch Aave position"));
+  return res.json();
+}
+
+export async function aaveSupply(agentId: string, amount: number): Promise<{ hash: string }> {
+  const res = await fetch(`${BASE}/agents/${agentId}/aave/supply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount }),
+  });
+  if (!res.ok) throw new Error(await parseError(res, "Aave supply failed"));
+  return res.json();
+}
+
+export async function aaveWithdraw(agentId: string, amount: number): Promise<{ hash: string }> {
+  const res = await fetch(`${BASE}/agents/${agentId}/aave/withdraw`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ amount }),
+  });
+  if (!res.ok) throw new Error(await parseError(res, "Aave withdraw failed"));
+  return res.json();
+}
