@@ -11,7 +11,18 @@ import RequestLoanForm from "@/components/RequestLoanForm";
 import RepayLoanForm from "@/components/RepayLoanForm";
 import GovernancePanel from "@/components/GovernancePanel";
 import TxToastContainer, { useTxToasts } from "@/components/TxToast";
-import { fetchAgents, fetchLoans, fetchStats, fetchPolicy, fetchGovernanceSessions, startAutonomous, stopAutonomous, fetchAutonomousStatus } from "@/lib/api";
+import {
+  EVENTS_URL,
+  LIVE_EVENTS_ENABLED,
+  fetchAgents,
+  fetchLoans,
+  fetchStats,
+  fetchPolicy,
+  fetchGovernanceSessions,
+  startAutonomous,
+  stopAutonomous,
+  fetchAutonomousStatus,
+} from "@/lib/api";
 import type {
   AgentStatus,
   Loan,
@@ -33,7 +44,12 @@ export default function Dashboard() {
   const [policy, setPolicy] = useState<NetworkPolicy | null>(null);
   const [govSessions, setGovSessions] = useState<ConsensusSession[]>([]);
   const [activeLoanId, setActiveLoanId] = useState<string | null>(null);
-  const [autonomous, setAutonomous] = useState<{ running: boolean; ticks: number }>({ running: false, ticks: 0 });
+  const [autonomous, setAutonomous] = useState<{
+    running: boolean;
+    ticks: number;
+    supported?: boolean;
+    mode?: string;
+  }>({ running: false, ticks: 0, supported: true });
   const { toasts, addToast } = useTxToasts();
 
   const refresh = useCallback(async () => {
@@ -44,7 +60,11 @@ export default function Dashboard() {
         fetchStats(),
         fetchPolicy().catch(() => null),
         fetchGovernanceSessions().catch(() => []),
-        fetchAutonomousStatus().catch(() => ({ running: false, ticks: 0 })),
+        fetchAutonomousStatus().catch(() => ({
+          running: false,
+          ticks: 0,
+          supported: true,
+        })),
       ]);
       setAgents(a);
       setLoans(l);
@@ -69,7 +89,9 @@ export default function Dashboard() {
 
   // SSE for real-time events
   useEffect(() => {
-    const source = new EventSource("http://localhost:3000/api/events");
+    if (!LIVE_EVENTS_ENABLED) return;
+
+    const source = new EventSource(EVENTS_URL);
     source.onmessage = (e) => {
       try {
         const event: LendNetEvent = JSON.parse(e.data);
@@ -80,6 +102,7 @@ export default function Dashboard() {
         const txHash = event.txHash as string | undefined;
         if (txHash) {
           const messages: Record<string, string> = {
+            agent_created: `Agent Funded — $${event.amount ?? ""} USDT minted`,
             loan_funded: `Loan Funded — $${event.amount ?? ""}`,
             repayment_made: `Repayment Sent — $${event.amount ?? ""}`,
             aave_supply: `Supplied to Aave — $${event.amount ?? ""}`,
@@ -117,7 +140,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="border-b border-white/10 bg-white/[0.02] px-6 py-4">
+      <header className="border-b border-white/10 bg-white/2 px-6 py-4">
         <div className="max-w-[1440px] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
@@ -138,6 +161,7 @@ export default function Dashboard() {
             <StatsBar data={stats} agentCount={agents.length} />
             <button
               onClick={async () => {
+                if (autonomous.supported === false) return;
                 try {
                   if (autonomous.running) {
                     await stopAutonomous();
@@ -151,11 +175,20 @@ export default function Dashboard() {
                 }
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                autonomous.running
+                autonomous.supported === false
+                  ? "bg-white/5 text-white/20 border-white/10 cursor-not-allowed"
+                  : autonomous.running
                   ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/30"
                   : "bg-white/5 text-white/40 border-white/10 hover:text-white/60 hover:border-white/20"
               }`}
-              title={autonomous.running ? `Autonomous mode active (${autonomous.ticks} ticks)` : "Start autonomous agent mode"}
+              title={
+                autonomous.supported === false
+                  ? "Autonomous mode is disabled for this backend deployment"
+                  : autonomous.running
+                    ? `Autonomous mode active (${autonomous.ticks} ticks)`
+                    : "Start autonomous agent mode"
+              }
+              disabled={autonomous.supported === false}
             >
               {autonomous.running ? (
                 <span className="flex items-center gap-1.5">
@@ -180,16 +213,28 @@ export default function Dashboard() {
           </div>
         )}
 
+        {!LIVE_EVENTS_ENABLED && (
+          <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-4 text-sm text-cyan-300 text-center">
+            Live events are disabled for this deployment. The dashboard will keep polling for updates.
+          </div>
+        )}
+
+        {autonomous.supported === false && (
+          <div className="rounded-xl border border-white/10 bg-white/2 p-4 text-sm text-white/60 text-center">
+            Autonomous mode is not supported by the current backend deployment.
+          </div>
+        )}
+
         {/* Top Row: Create Agent + Request Loan */}
         <div className="grid grid-cols-2 gap-5">
-          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <section className="rounded-xl border border-white/10 bg-white/2 p-5">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400 mb-4">
               Create Agent
             </h2>
             <CreateAgentForm onCreated={refresh} />
           </section>
 
-          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <section className="rounded-xl border border-white/10 bg-white/2 p-5">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400 mb-4">
               Request Loan
             </h2>
@@ -199,7 +244,7 @@ export default function Dashboard() {
 
         {/* Agents + Loans */}
         <div className="grid grid-cols-2 gap-5">
-          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <section className="rounded-xl border border-white/10 bg-white/2 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
                 AI Agents ({agents.length})
@@ -221,7 +266,7 @@ export default function Dashboard() {
             )}
           </section>
 
-          <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+          <section className="rounded-xl border border-white/10 bg-white/2 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400">
                 Loans ({loans.length})
@@ -267,7 +312,7 @@ export default function Dashboard() {
         </div>
 
         {/* AI Negotiation */}
-        <section className="rounded-xl border border-violet-500/20 bg-violet-500/[0.02] p-5">
+        <section className="rounded-xl border border-violet-500/20 bg-violet-500/2 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400">
               AI Negotiation
@@ -290,7 +335,7 @@ export default function Dashboard() {
         </section>
 
         {/* AI Governance */}
-        <section className="rounded-xl border border-amber-500/20 bg-amber-500/[0.02] p-5">
+        <section className="rounded-xl border border-amber-500/20 bg-amber-500/2 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-amber-400">
               AI Consensus Governance
@@ -310,7 +355,7 @@ export default function Dashboard() {
         </section>
 
         {/* Event Feed */}
-        <section className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+        <section className="rounded-xl border border-white/10 bg-white/2 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-emerald-400">
               Live Event Feed ({events.length})

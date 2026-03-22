@@ -151,7 +151,7 @@ export interface ConsensusSession {
 
 // ─── Event Types ───────────────────────────────────────
 export type LendNetEvent =
-  | { type: 'agent_created'; agent: AgentProfile }
+  | { type: 'agent_created'; agent: AgentProfile; txHash?: string; amount?: number }
   | { type: 'loan_requested'; loan: Loan }
   | { type: 'negotiation_round'; loanId: string; message: NegotiationMessage }
   | { type: 'loan_funded'; loanId: string; txHash: string; amount: number }

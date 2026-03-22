@@ -91,15 +91,16 @@ export class AgentManager {
     this.wallets.set(agent.id, wallet);
 
     // Fund agent on-chain: ETH for gas + LNUSD tokens
+    let mintTxHash: string | undefined;
     try {
       await this.token.fundGas(address);
-      await this.token.mint(address, AGENT_STARTING_BALANCE);
+      mintTxHash = await this.token.mint(address, AGENT_STARTING_BALANCE);
       console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — funded: ${AGENT_STARTING_BALANCE} LNUSD + gas`);
     } catch (err: any) {
       console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — on-chain funding failed: ${err.message}`);
     }
 
-    this.emit({ type: 'agent_created', agent });
+    this.emit({ type: 'agent_created', agent, txHash: mintTxHash, amount: mintTxHash ? AGENT_STARTING_BALANCE : undefined });
     return agent;
   }
 

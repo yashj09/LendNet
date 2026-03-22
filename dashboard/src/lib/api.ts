@@ -1,6 +1,17 @@
 import type { AgentStatus, Loan, LoanStats, NetworkPolicy, ConsensusSession } from "./types";
 
-const BASE = "http://localhost:3000/api";
+function normalizeApiBaseUrl(value?: string): string {
+  const trimmed = value?.trim().replace(/\/+$/, "");
+  if (!trimmed) return "http://localhost:3000/api";
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+const BASE = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
+
+export const API_BASE_URL = BASE;
+export const EVENTS_URL = `${BASE}/events`;
+export const LIVE_EVENTS_ENABLED =
+  process.env.NEXT_PUBLIC_ENABLE_LIVE_EVENTS !== "false";
 
 async function parseError(res: Response, fallback: string): Promise<string> {
   try {
@@ -146,7 +157,12 @@ export async function stopAutonomous(): Promise<{ status: string }> {
   return res.json();
 }
 
-export async function fetchAutonomousStatus(): Promise<{ running: boolean; ticks: number }> {
+export async function fetchAutonomousStatus(): Promise<{
+  running: boolean;
+  ticks: number;
+  supported?: boolean;
+  mode?: string;
+}> {
   const res = await fetch(`${BASE}/autonomous/status`);
   if (!res.ok) throw new Error(await parseError(res, "Failed to fetch autonomous status"));
   return res.json();
