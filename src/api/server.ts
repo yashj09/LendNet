@@ -335,9 +335,7 @@ export function startServer(
 ) {
   const app = createServer(agentManager, loanManager);
   app.listen(CONFIG.port, () => {
-    console.log(
-      `\n[Server] LendNet dashboard: http://localhost:${CONFIG.port}`,
-    );
+    console.log(`[Server] Listening on http://localhost:${CONFIG.port}`);
   });
   return app;
 }

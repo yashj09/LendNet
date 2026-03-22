@@ -116,10 +116,9 @@ export class AgentWalletManager {
   }
 
   async getBalances(): Promise<WalletInfo> {
-    const [ethBalance, usdtBalance] = await Promise.all([
-      this.account.getBalance(),
-      this.account.getTokenBalance(CONFIG.tokenAddress),
-    ]);
+    // Sequential to avoid RPC batch limits on free-tier providers
+    const ethBalance = await this.account.getBalance();
+    const usdtBalance = await this.account.getTokenBalance(CONFIG.tokenAddress);
 
     return {
       address: this._address,

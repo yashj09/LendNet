@@ -5,6 +5,7 @@ import { NegotiationEngine } from '../negotiation/NegotiationEngine.js';
 import { ConsensusEngine } from '../governance/ConsensusEngine.js';
 import { LoanManager } from '../loans/LoanManager.js';
 import { LendNetToken } from '../contracts/LendNetToken.js';
+import { logList } from '../logging.js';
 import type {
   AgentProfile,
   AgentReputation,
@@ -95,9 +96,22 @@ export class AgentManager {
     try {
       await this.token.fundGas(address);
       mintTxHash = await this.token.mint(address, AGENT_STARTING_BALANCE);
-      console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — funded: ${AGENT_STARTING_BALANCE} LNUSD + gas`);
+      logList("Agent Created", [
+        ["Name", name],
+        ["Role", role],
+        ["Id", agent.id],
+        ["Wallet", address],
+        ["Funding", `${AGENT_STARTING_BALANCE} LNUSD + gas`],
+        ["Mint Tx", mintTxHash],
+      ]);
     } catch (err: any) {
-      console.log(`[Agent] Created ${name} (${role}) — wallet: ${address} — on-chain funding failed: ${err.message}`);
+      logList("Agent Created", [
+        ["Name", name],
+        ["Role", role],
+        ["Id", agent.id],
+        ["Wallet", address],
+        ["Funding", `failed: ${err.message}`],
+      ]);
     }
 
     this.emit({ type: 'agent_created', agent, txHash: mintTxHash, amount: mintTxHash ? AGENT_STARTING_BALANCE : undefined });

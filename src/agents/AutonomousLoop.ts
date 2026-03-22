@@ -59,8 +59,75 @@ export class AutonomousLoop {
     if (this.running) return;
     this.running = true;
     console.log(`[Autonomous] Loop started — interval: ${this.intervalMs / 1000}s`);
-    // Run first tick after a short delay to let agents get created
-    this.timer = setInterval(() => this.tick(), this.intervalMs);
+
+    // Bootstrap: auto-create agents + trigger first loan immediately
+    this.bootstrap().then(() => {
+      this.timer = setInterval(() => this.tick(), this.intervalMs);
+    });
+  }
+
+  /**
+   * Auto-bootstrap the network for demo purposes:
+   * - If no agents exist, create 3 agents (2 lenders + 1 borrower)
+   * - Then immediately trigger a loan request to showcase the full flow
+   *   (governance committee + AI negotiation + on-chain settlement)
+   */
+  private async bootstrap(): Promise<void> {
+    let agents = this.agentManager.getAllAgents();
+
+    if (agents.length === 0) {
+      console.log('[Autonomous] No agents found — bootstrapping network...');
+      this.emit({ type: 'autonomous_tick', tick: 0, actions: ['Bootstrapping: creating agents...'] });
+
+      try {
+        await this.agentManager.createAgent('Atlas Lender', 'lender');
+        await this.agentManager.createAgent('Nexus Lender', 'lender');
+        await this.agentManager.createAgent('Orion Borrower', 'borrower');
+        console.log('[Autonomous] 3 agents created (2 lenders + 1 borrower)');
+      } catch (err: any) {
+        console.log(`[Autonomous] Bootstrap agent creation failed: ${err.message}`);
+        return;
+      }
+
+      agents = this.agentManager.getAllAgents();
+    }
+
+    // Immediately trigger a loan to showcase the full pipeline
+    const borrower = agents.find(a => a.role === 'borrower' || a.role === 'both');
+    const hasLender = agents.some(a => a.role === 'lender' || a.role === 'both');
+    if (!borrower || !hasLender) return;
+
+    // Check if there are already active loans — skip if so
+    const activeLoans = this.loanManager.getAllLoans()
+      .filter(l => !['completed', 'defaulted', 'rejected'].includes(l.status));
+    if (activeLoans.length > 0) {
+      console.log('[Autonomous] Active loans already exist — skipping bootstrap loan');
+      return;
+    }
+
+    const purpose = LOAN_PURPOSES[Math.floor(Math.random() * LOAN_PURPOSES.length)];
+    // Use amount > $500 to trigger committee governance for demo
+    const amount = 600;
+
+    console.log(`[Autonomous] Bootstrap: triggering demo loan ($${amount}) to showcase full pipeline`);
+    this.emit({ type: 'autonomous_tick', tick: 0, actions: [`Bootstrap: ${borrower.name} requesting $${amount} loan — triggers governance + negotiation`] });
+
+    try {
+      const result = await this.agentManager.requestLoan({
+        borrowerId: borrower.id,
+        amount,
+        purpose,
+        offeredRate: 10,
+        offeredCollateral: 40,
+      });
+      if (result.agreed) {
+        console.log(`[Autonomous] Bootstrap loan ${result.loanId} funded — TX: ${result.txHash}`);
+      } else {
+        console.log(`[Autonomous] Bootstrap loan ${result.loanId} — negotiation/committee did not agree`);
+      }
+    } catch (err: any) {
+      console.log(`[Autonomous] Bootstrap loan failed: ${err.message}`);
+    }
   }
 
   stop(): void {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { ethers } from 'ethers';
 import { CONFIG } from '../config/index.js';
+import { formatAddress, logList } from '../logging.js';
 
 type TokenArtifact = { abi: any[]; bytecode: string };
 
@@ -57,18 +58,25 @@ export class LendNetToken {
       this._address = existingAddress;
       const name = await this.contract.name();
       const supply = await this.contract.totalSupply();
-      console.log(`[Token] Connected to ${name} at ${existingAddress} (supply: ${Number(supply) / 1e6} USDT)`);
+      logList("Token Connected", [
+        ["Name", name],
+        ["Address", existingAddress],
+        ["Supply", `${Number(supply) / 1e6} USDT`],
+      ]);
       return existingAddress;
     }
 
     // Deploy new USDT token
-    console.log(`[Token] Deploying USDT from ${this.deployer.address}...`);
+    logList("Token Deploy", [
+      ["Deployer", formatAddress(this.deployer.address)],
+      ["RPC", CONFIG.rpcUrl],
+    ]);
     const factory = new ethers.ContractFactory(this.artifact.abi, this.artifact.bytecode, this.deployer);
     const deployed = await factory.deploy();
     await deployed.waitForDeployment();
     this._address = await deployed.getAddress();
     this.contract = new ethers.Contract(this._address, this.artifact.abi, this.deployer);
-    console.log(`[Token] USDT deployed at ${this._address}`);
+    logList("Token Deploy", [["Result", `USDT deployed at ${this._address}`]]);
     return this._address;
   }
 
@@ -80,7 +88,11 @@ export class LendNetToken {
     const units = BigInt(Math.round(amount * 1e6));
     const tx = await this.contract.mint(to, units);
     const receipt = await tx.wait();
-    console.log(`[Token] Minted ${amount} USDT to ${to.slice(0, 10)}... — tx: ${receipt.hash}`);
+    logList("Token Mint", [
+      ["Amount", `${amount} USDT`],
+      ["To", formatAddress(to)],
+      ["Tx", receipt.hash],
+    ]);
     return receipt.hash;
   }
 
@@ -93,7 +105,11 @@ export class LendNetToken {
       value: ethers.parseEther(ethAmount.toString()),
     });
     const receipt = await tx.wait();
-    console.log(`[Token] Sent ${ethAmount} ETH to ${to.slice(0, 10)}... for gas — tx: ${receipt!.hash}`);
+    logList("Gas Funding", [
+      ["Amount", `${ethAmount} ETH`],
+      ["To", formatAddress(to)],
+      ["Tx", receipt!.hash],
+    ]);
     return receipt!.hash;
   }
 

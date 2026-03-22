@@ -1,12 +1,22 @@
-import { startServer } from "./api/server.js";
 import {
-  attachEventLogging,
-  initializeRuntime,
-  logReadyMessage,
-} from "./runtime.js";
+  logBootBanner,
+  withMutedStartupNoise,
+} from "./logging.js";
 
 async function main() {
-  const { agentManager, loanManager } = await initializeRuntime();
+  logBootBanner();
+
+  const [{ startServer }, runtime] = await withMutedStartupNoise(async () =>
+    Promise.all([
+      import("./api/server.js"),
+      import("./runtime.js"),
+    ]),
+  );
+
+  const { attachEventLogging, initializeRuntime, logReadyMessage } = runtime;
+  const { agentManager, loanManager } = await initializeRuntime({
+    logBanner: false,
+  });
 
   // Start API server + dashboard
   startServer(agentManager, loanManager);

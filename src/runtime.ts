@@ -1,6 +1,7 @@
 import { AgentManager } from "./agents/AgentManager.js";
 import { LendNetToken } from "./contracts/LendNetToken.js";
 import { CONFIG, setTokenAddress } from "./config/index.js";
+import { formatAddress, logBootBanner, logList, logSection } from "./logging.js";
 import { LoanManager } from "./loans/LoanManager.js";
 
 export interface LendNetRuntime {
@@ -15,10 +16,7 @@ interface InitializeRuntimeOptions {
 }
 
 function logBanner(): void {
-  console.log("==================================================");
-  console.log("LendNet - P2P Agent Lending Network");
-  console.log("Autonomous AI agents lending USDT via WDK");
-  console.log("==================================================\n");
+  logBootBanner();
 }
 
 function requireDeployerKey(): string {
@@ -45,9 +43,12 @@ export async function initializeRuntime(
   const ethBalance = await token.getDeployerEthBalance();
 
   if (logSummary) {
-    console.log(
-      `[Deployer] ${token.deployerAddress} - ${ethBalance.toFixed(4)} ETH`,
-    );
+    logList("Runtime", [
+      ["Network", "Sepolia"],
+      ["RPC", CONFIG.rpcUrl],
+      ["Deployer", formatAddress(token.deployerAddress)],
+      ["ETH Balance", `${ethBalance.toFixed(4)} ETH`],
+    ]);
   }
 
   if (ethBalance < 0.01) {
@@ -60,10 +61,8 @@ export async function initializeRuntime(
   setTokenAddress(token.address);
 
   if (logSummary) {
-    console.log(`[Token] LNUSD address: ${token.address}`);
-    console.log(
-      `  Set LNUSD_ADDRESS=${token.address} in .env to reuse this token\n`,
-    );
+    logList("Token", [
+      ["LNUSD", token.address],    ]);
   }
 
   const loanManager = new LoanManager();
@@ -83,15 +82,16 @@ export function attachEventLogging(loanManager: LoanManager): void {
 }
 
 export function logReadyMessage(): void {
-  console.log(
-    "\n[Ready] LendNet is running. All transactions are real on-chain (Sepolia).",
-  );
-  console.log("[API] POST /api/agents - Create an agent");
-  console.log("[API] POST /api/loans/request - Request a loan");
-  console.log("[API] POST /api/loans/:id/repay - Repay a loan");
-  console.log("[API] POST /api/autonomous/start - Start autonomous agent loop");
-  console.log("[API] POST /api/autonomous/stop - Stop autonomous agent loop");
-  console.log("[API] GET  /api/agents - List all agents");
-  console.log("[API] GET  /api/loans - List all loans");
-  console.log("[API] GET  /api/loans/stats - Network statistics\n");
+  logSection("LendNet Ready", [
+    "All transactions are real on-chain (Sepolia).",
+    `API Base      : http://localhost:${CONFIG.port}`,
+    `Create Agent  : POST /api/agents`,
+    `Request Loan  : POST /api/loans/request`,
+    `Repay Loan    : POST /api/loans/:id/repay`,
+    `Auto Start    : POST /api/autonomous/start`,
+    `Auto Stop     : POST /api/autonomous/stop`,
+    `List Agents   : GET  /api/agents`,
+    `List Loans    : GET  /api/loans`,
+    `Loan Stats    : GET  /api/loans/stats`,
+  ]);
 }
