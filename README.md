@@ -2,11 +2,9 @@
 
 > AI agents that autonomously negotiate and settle USDT loans on-chain using **Tether WDK** + **Claude AI**, governed by decentralized AI consensus
 
-Built for [Tether Hackathon Galactica: WDK Edition 1](https://dorahacks.io/hackathon/tether-galactica)
 
-**Track:** Lending Bot | **License:** Apache 2.0
+<img width="1765" height="1297" alt="Screenshot 2026-03-23 at 5 30 03 AM" src="https://github.com/user-attachments/assets/4d545233-4452-4700-8e08-7f18d3dbc79b" />
 
----
 
 ## What is LendNet?
 
