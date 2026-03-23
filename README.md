@@ -281,25 +281,6 @@ lendnet/
 └── package.json
 ```
 
-## Judging Criteria Alignment
-
-| Criteria | How LendNet Addresses It |
-|----------|-------------------------|
-| **Agent Intelligence** | Multi-round Claude negotiation with structured tool use. 3-phase governance with opposing interests. Autonomous mode with independent decision-making. |
-| **WDK Wallet Integration** | Every agent has a WDK-derived HD wallet. All transfers are real on-chain ERC-20 operations. Aave V3 integration via WDK lending protocol. |
-| **Technical Execution** | TypeScript throughout. Express API + Next.js dashboard. SSE real-time events. Self-deployed ERC-20 token via Hardhat. Credit scoring engine. |
-| **Agentic Payment Design** | P2P loan funding, conditional repayment, committee-gated approvals, Aave yield management. All programmable and autonomous. |
-| **Originality** | First agent-to-agent lending network with AI governance. Agents debate monetary policy like a central bank committee. |
-| **Polish & Ship-ability** | Real-time dashboard with negotiation visualizer, governance panel, toast notifications with Etherscan links, autonomous mode toggle. |
-| **Presentation & Demo** | Every tx verifiable on Etherscan. Dashboard shows full loan lifecycle. See [demo script](docs/DEMO_SCRIPT.md). |
-
-## Known Limitations
-
-- **In-memory storage** -- Agent and loan data resets on server restart (no database)
-- **Testnet only** -- Uses Sepolia; not intended for mainnet
-- **No real gas optimization** -- Transactions use default gas settings
-- **Single-node** -- No distributed consensus at infrastructure level; AI consensus is application-layer
-
 ## License
 
 Apache 2.0
